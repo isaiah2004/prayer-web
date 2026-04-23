@@ -81,7 +81,6 @@ export function PrayerRoulette({
     }
 
     const picked = result.pick
-    onChange?.()
 
     const itemHeight = 64
     const stripCount = 40
@@ -101,6 +100,7 @@ export function PrayerRoulette({
         onComplete: () => {
           setPick(picked)
           setSpinning(false)
+          onChange?.()
           requestAnimationFrame(() => {
             const el = resultRef.current
             if (el) {

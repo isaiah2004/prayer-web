@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type { PanelKind, VerseSelection, ViewLayout } from "@/lib/types"
 import { VersePanel } from "@/components/verse-panel"
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
   FEATURED_COMMENTARIES,
   FEATURED_TRANSLATIONS,
@@ -48,7 +49,7 @@ const LAYOUT_PRESETS: ViewLayout[] = [
     name: "Compare",
     panels: [
       { kind: "translation", translationId: "BSB" },
-      { kind: "translation", translationId: "WEB" },
+      { kind: "translation", translationId: "ENGWEBP" },
     ],
   },
   {
@@ -323,14 +324,17 @@ export function VerseView({
           )}
         </form>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onClose}
-          aria-label="Close verse view"
-        >
-          <X />
-        </Button>
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClose}
+            aria-label="Close verse view"
+          >
+            <X />
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
