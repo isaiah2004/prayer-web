@@ -128,7 +128,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
     try {
       const result = await randomizeAction(space.code)
       if (!result.ok) {
-        setError(result.error ?? "Couldn't randomize")
+        setError(result.error ?? "Couldn't generate pairs")
         return
       }
       await mutate()
@@ -193,7 +193,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                         variant="ghost"
                         size="sm"
                         onClick={onReset}
-                        title="Clear current pairing"
+                        title="Clear current pairs"
                       >
                         <RefreshCcw data-icon="inline-start" />
                         Reset
@@ -220,14 +220,14 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                   size="lg"
                   onClick={onRandomize}
                   disabled={!canRandomize || randomizing}
-                  className="group relative h-14 min-w-56 bg-gradient-to-br from-indigo-600 via-violet-600 to-pink-600 text-base font-semibold text-white hover:from-indigo-500 hover:via-violet-500 hover:to-pink-500 disabled:opacity-60"
+                  className="group relative h-14 min-w-64 bg-gradient-to-br from-indigo-600 via-violet-600 to-pink-600 text-base font-semibold text-white hover:from-indigo-500 hover:via-violet-500 hover:to-pink-500 disabled:opacity-60"
                 >
                   <Shuffle data-icon="inline-start" />
                   {randomizing
                     ? "Shuffling…"
                     : space.assignments
-                      ? "Randomize again"
-                      : "Randomize!"}
+                      ? "Regenerate prayer pairs"
+                      : "Generate prayer pairs"}
                 </Button>
                 <Button
                   size="lg"
@@ -258,8 +258,8 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
               </div>
               <p className="text-muted-foreground text-center text-xs">
                 {canRandomize
-                  ? "Randomize to pair everyone, spin the roulette to pick a leader, or open Verse View to share scripture."
-                  : "Add people to enable randomizing. Roulette needs 1+. Verse View works anytime."}
+                  ? "Generate prayer pairs to cover everyone, spin the roulette to pick a leader, or open Verse View to share scripture."
+                  : "Add people to enable pair generation. Roulette needs 1+. Verse View works anytime."}
               </p>
               {error ? (
                 <p className="text-destructive text-sm">{error}</p>

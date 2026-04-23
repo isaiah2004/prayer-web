@@ -31,16 +31,16 @@ export function RandomizeReveal({
   const [phase, setPhase] = React.useState<Phase>("idle")
   const [revealIndex, setRevealIndex] = React.useState(0)
 
-  const myAssignment = React.useMemo(
-    () =>
-      myId ? (assignments.find((a) => a.prayerId === myId) ?? null) : null,
+  const myAssignments = React.useMemo(
+    () => (myId ? assignments.filter((a) => a.prayerId === myId) : []),
     [assignments, myId],
   )
 
   const orderedAssignments = React.useMemo(() => {
-    if (!myAssignment) return assignments
-    return [myAssignment, ...assignments.filter((a) => a !== myAssignment)]
-  }, [assignments, myAssignment])
+    if (myAssignments.length === 0) return assignments
+    const mySet = new Set(myAssignments)
+    return [...myAssignments, ...assignments.filter((a) => !mySet.has(a))]
+  }, [assignments, myAssignments])
 
   React.useEffect(() => {
     if (!open) {
@@ -153,10 +153,10 @@ export function RandomizeReveal({
             <Sparkles className="text-primary size-4" />
             <span className="text-sm font-medium">
               {phase === "shuffling"
-                ? "Mixing everyone up…"
+                ? "Generating prayer pairs…"
                 : phase === "revealing"
                   ? "Revealing pairs…"
-                  : "Your prayer pairings"}
+                  : "Your prayer pairs"}
             </span>
           </div>
           <Button
@@ -210,7 +210,7 @@ export function RandomizeReveal({
               const isMine = assignment.prayerId === myId
               return (
                 <AssignmentCard
-                  key={assignment.prayerId}
+                  key={`${assignment.prayerId}->${assignment.requestId}`}
                   assignment={assignment}
                   isMine={isMine}
                 />
@@ -222,10 +222,10 @@ export function RandomizeReveal({
         <div className="flex items-center justify-between gap-3 border-t px-5 py-3">
           <span className="text-muted-foreground text-xs">
             {phase === "done"
-              ? `${assignments.length} pairings • take a moment to pray 🙏`
+              ? `${assignments.length} ${assignments.length === 1 ? "pair" : "pairs"} • take a moment to pray 🙏`
               : phase === "revealing"
                 ? `${revealIndex} of ${assignments.length}`
-                : "Shuffling…"}
+                : "Generating pairs…"}
           </span>
           <Button onClick={onClose} variant="default">
             Done
