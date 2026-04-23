@@ -317,9 +317,15 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                   code={space.code}
                   participants={space.participants}
                   myId={myId}
+                  versePresenterId={space.versePresenterId ?? null}
+                  presenterRequests={space.presenterRequests ?? []}
+                  isAdmin={isAdmin}
                   onChange={() => {
                     void mutate()
                   }}
+                  onGrantPresenter={onGrantPresenter}
+                  onReclaimPresenter={onReclaimPresenter}
+                  onDenyPresenter={onDenyPresenter}
                 />
               </CardContent>
             </Card>
@@ -329,23 +335,30 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                 <Button
                   size="lg"
                   onClick={onRandomize}
-                  disabled={!canRandomize || randomizing}
+                  disabled={!canRandomize || randomizing || !myId}
                   className="group relative h-14 min-w-64 bg-gradient-to-br from-indigo-600 via-violet-600 to-pink-600 text-base font-semibold text-white hover:from-indigo-500 hover:via-violet-500 hover:to-pink-500 disabled:opacity-60"
+                  title={!myId ? "Add yourself first" : undefined}
                 >
                   <Shuffle data-icon="inline-start" />
                   {randomizing
                     ? "Shuffling…"
-                    : space.assignments
-                      ? "Regenerate prayer pairs"
-                      : "Generate prayer pairs"}
+                    : isAdmin
+                      ? space.assignments
+                        ? "Regenerate prayer pairs"
+                        : "Generate prayer pairs"
+                      : "Request prayer pairs"}
                 </Button>
                 <Button
                   size="lg"
                   variant="outline"
                   onClick={() => setRouletteOpen(true)}
-                  disabled={!canRoulette}
+                  disabled={!canRoulette || !myId}
                   className="h-14 min-w-48 text-base"
-                  title="Pick a random person to lead prayer"
+                  title={
+                    !myId
+                      ? "Add yourself first"
+                      : "Pick a random person to lead prayer"
+                  }
                 >
                   <Dices data-icon="inline-start" />
                   Prayer Roulette
@@ -410,25 +423,27 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
               </Card>
             )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Add someone not here</CardTitle>
-                <CardDescription>
-                  Add a friend who isn&apos;t in the room so everyone can still
-                  pray for their request. They won&apos;t be assigned to pray
-                  and won&apos;t show up in the roulette.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <AddParticipant
-                  code={space.code}
-                  mode="other"
-                  onAdded={() => {
-                    void mutate()
-                  }}
-                />
-              </CardContent>
-            </Card>
+            {myId ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Add someone not here</CardTitle>
+                  <CardDescription>
+                    Add a friend who isn&apos;t in the room so everyone can
+                    still pray for their request. They won&apos;t be assigned
+                    to pray and won&apos;t show up in the roulette.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <AddParticipant
+                    code={space.code}
+                    mode="other"
+                    onAdded={() => {
+                      void mutate()
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            ) : null}
           </div>
         </div>
       </div>
@@ -437,6 +452,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
         open={revealOpen && !!space.assignments}
         participants={space.participants}
         assignments={space.assignments ?? []}
+        prayerOrder={space.prayerOrder ?? null}
         myId={myId}
         onClose={() => setRevealOpen(false)}
       />

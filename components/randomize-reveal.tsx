@@ -12,6 +12,7 @@ type Props = {
   open: boolean
   participants: Participant[]
   assignments: Assignment[]
+  prayerOrder: string[] | null
   myId: string | null
   onClose: () => void
 }
@@ -22,9 +23,17 @@ export function RandomizeReveal({
   open,
   participants,
   assignments,
+  prayerOrder,
   myId,
   onClose,
 }: Props) {
+  const orderedNames = React.useMemo(() => {
+    if (!prayerOrder) return []
+    const byId = new Map(participants.map((p) => [p.id, p]))
+    return prayerOrder
+      .map((id) => byId.get(id))
+      .filter((p): p is Participant => !!p)
+  }, [prayerOrder, participants])
   const overlayRef = React.useRef<HTMLDivElement | null>(null)
   const shuffleRef = React.useRef<HTMLDivElement | null>(null)
   const resultRef = React.useRef<HTMLDivElement | null>(null)
@@ -206,6 +215,37 @@ export function RandomizeReveal({
                 "pointer-events-none opacity-0",
             )}
           >
+            {orderedNames.length > 0 ? (
+              <div
+                data-reveal-card
+                className="from-primary/10 to-primary/5 rounded-xl border bg-gradient-to-br p-4"
+              >
+                <div className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
+                  Prayer order
+                </div>
+                <ol className="flex flex-col gap-1 text-sm">
+                  {orderedNames.map((p, i) => (
+                    <li
+                      key={p.id}
+                      className={cn(
+                        "flex items-center gap-2",
+                        p.id === myId && "text-primary font-medium",
+                      )}
+                    >
+                      <span className="text-muted-foreground inline-flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs">
+                        {i + 1}
+                      </span>
+                      <span>{p.name}</span>
+                      {p.id === myId ? (
+                        <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs">
+                          you
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
             {orderedAssignments.map((assignment) => {
               const isMine = assignment.prayerId === myId
               return (

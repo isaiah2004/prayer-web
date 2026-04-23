@@ -34,7 +34,11 @@ import {
   FEATURED_TRANSLATIONS,
 } from "@/lib/bible/api"
 import { parseReference } from "@/lib/bible/books"
-import { setVerseAction, clearVerseAction } from "@/app/actions"
+import {
+  setVerseAction,
+  clearVerseAction,
+  requestPresenterAction,
+} from "@/app/actions"
 
 export type SyncMode = "follow" | "custom-layout" | "free"
 
@@ -333,11 +337,13 @@ export function VerseView({
             <Button type="submit" size="sm" variant="secondary">
               Set locally
             </Button>
-          ) : (
+          ) : canSet ? (
             <Button type="submit" size="sm" disabled={publishing}>
               <Megaphone data-icon="inline-start" />
               {publishing ? "Setting…" : "Set for everyone"}
             </Button>
+          ) : (
+            <AskForFloor code={code} myId={myId} onChange={onChange} />
           )}
         </form>
 
@@ -473,6 +479,49 @@ export function VerseView({
         ) : null}
       </div>
     </div>
+  )
+}
+
+function AskForFloor({
+  code,
+  myId,
+  onChange,
+}: {
+  code: string
+  myId: string | null
+  onChange?: () => void
+}) {
+  const [asked, setAsked] = React.useState(false)
+  const [pending, setPending] = React.useState(false)
+  async function ask() {
+    if (!myId) return
+    setPending(true)
+    try {
+      const result = await requestPresenterAction(code, myId)
+      if (result.ok) setAsked(true)
+      onChange?.()
+    } finally {
+      setPending(false)
+    }
+  }
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="secondary"
+      onClick={ask}
+      disabled={pending || !myId || asked}
+      title={
+        !myId
+          ? "Add yourself to the space first"
+          : asked
+            ? "Request sent — waiting for admin"
+            : "Ask admin for the floor"
+      }
+    >
+      <Megaphone data-icon="inline-start" />
+      {asked ? "Waiting…" : "Ask for floor"}
+    </Button>
   )
 }
 
