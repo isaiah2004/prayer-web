@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Trash2, User } from "lucide-react"
+import { Trash2, User, UserX } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -65,21 +65,26 @@ function ParticipantRow({
     }
   }
 
+  const absent = !participant.present
   return (
     <li
       className={cn(
         "bg-card rounded-xl border p-4 shadow-sm transition-colors",
         isMe && "ring-primary/30 ring-2",
+        absent && "opacity-75",
       )}
     >
       <div className="flex items-start gap-3">
         <div
           className={cn(
-            "bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-full",
+            "flex size-8 shrink-0 items-center justify-center rounded-full",
+            absent
+              ? "bg-muted text-muted-foreground"
+              : "bg-primary/10 text-primary",
           )}
           aria-hidden
         >
-          <User className="size-4" />
+          {absent ? <UserX className="size-4" /> : <User className="size-4" />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -87,6 +92,14 @@ function ParticipantRow({
             {isMe ? (
               <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs font-medium">
                 you
+              </span>
+            ) : null}
+            {absent ? (
+              <span
+                className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium"
+                title="Not in the room. Others will pray for them but they won't be assigned to pray."
+              >
+                not present
               </span>
             ) : null}
           </div>
@@ -104,14 +117,14 @@ function ParticipantRow({
             />
           ) : null}
         </div>
-        {isMe ? (
+        {isMe || absent ? (
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
             onClick={remove}
             disabled={removing}
-            aria-label="Remove yourself"
+            aria-label={isMe ? "Remove yourself" : "Remove this person"}
           >
             <Trash2 />
           </Button>

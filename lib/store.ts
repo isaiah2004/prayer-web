@@ -30,6 +30,17 @@ function blobPath(code: string): string {
   return `spaces/${code}.json`
 }
 
+function migrateSpace(space: Space): Space {
+  // Older records may be missing the `present` flag — default to true so
+  // existing participants are treated as being in the room.
+  for (const p of space.participants) {
+    if (typeof p.present !== "boolean") {
+      (p as Participant).present = true
+    }
+  }
+  return space
+}
+
 async function readSpaceFromBlob(code: string): Promise<Space | null> {
   try {
     const result = await get(blobPath(code), {
@@ -39,7 +50,7 @@ async function readSpaceFromBlob(code: string): Promise<Space | null> {
     if (!result || result.statusCode !== 200) return null
     const text = await new Response(result.stream).text()
     if (!text) return null
-    const space = JSON.parse(text) as Space
+    const space = migrateSpace(JSON.parse(text) as Space)
     if (Date.now() - space.createdAt > SPACE_TTL_MS) {
       try {
         await del(blobPath(code))
@@ -117,11 +128,13 @@ export async function addParticipant(
   code: string,
   name: string,
   request: string,
+  options: { present?: boolean } = {},
 ): Promise<
   { space: Space; participant: Participant } | { error: string }
 > {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
+  const present = options.present ?? true
   const cleanName = name.trim()
   if (!cleanName) return { error: "Name is required" }
   if (cleanName.length > 60) return { error: "Name is too long" }
@@ -135,9 +148,12 @@ export async function addParticipant(
     name: cleanName,
     request: cleanRequest,
     createdAt: Date.now(),
+    present,
   }
   space.participants.push(participant)
-  space.roulette.weights[participant.id] = 1
+  if (present) {
+    space.roulette.weights[participant.id] = 1
+  }
   space.assignments = null
   space.randomizedAt = null
   await persistSpace(space)
@@ -164,19 +180,124 @@ export async function removeParticipant(
   return { space }
 }
 
-function derangementOrRotation<T>(items: T[]): T[] {
-  const n = items.length
-  if (n < 2) return items.slice()
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const shuffled = items.slice()
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-    }
-    const ok = shuffled.every((v, i) => v !== items[i])
-    if (ok) return shuffled
+function shuffleInPlace<T>(items: T[]): void {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[items[i], items[j]] = [items[j], items[i]]
   }
-  return items.slice(1).concat(items[0])
+}
+
+/**
+ * Assign every `request` to one `prayer`, spreading the load as evenly as
+ * possible and never giving a present person their own request.
+ * - If prayers == 0, returns null (no one to pray).
+ * - Every request is covered exactly once.
+ * - Load balance: each prayer gets floor(R/P) or ceil(R/P) requests.
+ * - No prayer is paired with their own request when possible.
+ */
+function buildAssignments(
+  prayers: Participant[],
+  requests: Participant[],
+): Array<{ prayer: Participant; request: Participant }> | null {
+  if (prayers.length === 0) return null
+  const P = prayers.length
+  const R = requests.length
+  if (R === 0) return []
+
+  const baseLoad = Math.floor(R / P)
+  const extra = R - baseLoad * P
+  // quotas[i] = how many requests prayers[i] gets
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const shuffledPrayers = prayers.slice()
+    shuffleInPlace(shuffledPrayers)
+    const shuffledRequests = requests.slice()
+    shuffleInPlace(shuffledRequests)
+
+    // Build the list of prayer slots to fill (by repeating each prayer
+    // by their quota). Prayers that get extra are the first `extra` in
+    // the shuffled order.
+    const slots: Participant[] = []
+    for (let i = 0; i < P; i++) {
+      const quota = baseLoad + (i < extra ? 1 : 0)
+      for (let k = 0; k < quota; k++) slots.push(shuffledPrayers[i])
+    }
+    // slots.length === R
+
+    // Pair slots[i] with shuffledRequests[i], avoiding self-matches.
+    // If a self-match appears, try to swap with a later slot that doesn't
+    // conflict.
+    let ok = true
+    for (let i = 0; i < R; i++) {
+      if (slots[i].id === shuffledRequests[i].id) {
+        let swapped = false
+        for (let j = i + 1; j < R; j++) {
+          if (
+            slots[i].id !== shuffledRequests[j].id &&
+            slots[j].id !== shuffledRequests[i].id
+          ) {
+            ;[shuffledRequests[i], shuffledRequests[j]] = [
+              shuffledRequests[j],
+              shuffledRequests[i],
+            ]
+            swapped = true
+            break
+          }
+        }
+        if (!swapped) {
+          // Try swapping with an earlier position too.
+          for (let j = 0; j < i; j++) {
+            if (
+              slots[i].id !== shuffledRequests[j].id &&
+              slots[j].id !== shuffledRequests[i].id
+            ) {
+              ;[shuffledRequests[i], shuffledRequests[j]] = [
+                shuffledRequests[j],
+                shuffledRequests[i],
+              ]
+              swapped = true
+              break
+            }
+          }
+        }
+        if (!swapped) {
+          ok = false
+          break
+        }
+      }
+    }
+    if (!ok) continue
+
+    // Sanity: verify no self-match remains.
+    let clean = true
+    for (let i = 0; i < R; i++) {
+      if (slots[i].id === shuffledRequests[i].id) {
+        clean = false
+        break
+      }
+    }
+    if (!clean) continue
+
+    return slots.map((prayer, i) => ({
+      prayer,
+      request: shuffledRequests[i],
+    }))
+  }
+
+  // Fallback: accept a few self-matches if the set is too constrained
+  // (e.g. 1 present + 1 absent — present person must pray for absent).
+  const slots: Participant[] = []
+  const shuffledPrayers = prayers.slice()
+  shuffleInPlace(shuffledPrayers)
+  const shuffledRequests = requests.slice()
+  shuffleInPlace(shuffledRequests)
+  for (let i = 0; i < P; i++) {
+    const quota = baseLoad + (i < extra ? 1 : 0)
+    for (let k = 0; k < quota; k++) slots.push(shuffledPrayers[i])
+  }
+  return slots.map((prayer, i) => ({
+    prayer,
+    request: shuffledRequests[i],
+  }))
 }
 
 export async function randomize(
@@ -184,18 +305,24 @@ export async function randomize(
 ): Promise<{ space: Space } | { error: string }> {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
-  if (space.participants.length < 2)
+
+  const requests = space.participants
+  const prayers = space.participants.filter((p) => p.present)
+
+  if (prayers.length === 0)
+    return { error: "Need at least one present person to randomize" }
+  if (requests.length < 2)
     return { error: "Need at least 2 participants to randomize" }
 
-  const prayers = space.participants.slice()
-  const targets = derangementOrRotation(space.participants.slice())
+  const pairs = buildAssignments(prayers, requests)
+  if (!pairs) return { error: "Couldn't build assignments" }
 
-  space.assignments = prayers.map((prayer, i) => ({
+  space.assignments = pairs.map(({ prayer, request }) => ({
     prayerId: prayer.id,
     prayerName: prayer.name,
-    requestId: targets[i].id,
-    requestName: targets[i].name,
-    request: targets[i].request,
+    requestId: request.id,
+    requestName: request.name,
+    request: request.request,
   }))
   space.randomizedAt = Date.now()
   await persistSpace(space)
@@ -220,27 +347,34 @@ export async function spinRoulette(
 ): Promise<{ space: Space; pick: RoulettePick } | { error: string }> {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
-  if (space.participants.length === 0)
-    return { error: "Add at least one person first" }
 
-  for (const p of space.participants) {
+  const present = space.participants.filter((p) => p.present)
+  if (present.length === 0)
+    return { error: "Add at least one present person first" }
+
+  for (const p of present) {
     if (space.roulette.weights[p.id] == null) {
       space.roulette.weights[p.id] = 1
     }
   }
+  // Make sure non-present people are never weighted, even if older state
+  // accidentally seeded them.
+  for (const p of space.participants) {
+    if (!p.present) delete space.roulette.weights[p.id]
+  }
 
   let total = 0
-  for (const p of space.participants) {
+  for (const p of present) {
     total += space.roulette.weights[p.id] ?? 0
   }
   if (total <= 0) {
-    for (const p of space.participants) space.roulette.weights[p.id] = 1
-    total = space.participants.length
+    for (const p of present) space.roulette.weights[p.id] = 1
+    total = present.length
   }
 
   let roll = Math.random() * total
-  let picked = space.participants[space.participants.length - 1]
-  for (const p of space.participants) {
+  let picked = present[present.length - 1]
+  for (const p of present) {
     const w = space.roulette.weights[p.id] ?? 0
     if (roll < w) {
       picked = p
@@ -269,7 +403,9 @@ export async function resetRoulette(
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   space.roulette = {
-    weights: Object.fromEntries(space.participants.map((p) => [p.id, 1])),
+    weights: Object.fromEntries(
+      space.participants.filter((p) => p.present).map((p) => [p.id, 1]),
+    ),
     history: [],
   }
   await persistSpace(space)

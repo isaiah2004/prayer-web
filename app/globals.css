@@ -162,3 +162,10 @@
   background-size: 200% 200%;
   animation: gradient-shift 12s ease infinite;
 }
+
+/* In dark mode, use a flat neutral-dark background instead of a gradient. */
+.dark .animated-gradient {
+  background: oklch(0.27 0 0);
+  background-size: auto;
+  animation: none;
+}

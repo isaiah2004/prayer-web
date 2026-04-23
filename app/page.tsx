@@ -14,7 +14,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 export default function Page() {
   return (
-    <main className="animated-gradient relative min-h-svh bg-gradient-to-br from-indigo-50 via-violet-50 to-pink-50 dark:from-indigo-950/40 dark:via-violet-950/40 dark:to-pink-950/40">
+    <main className="animated-gradient relative min-h-svh bg-gradient-to-br from-indigo-50 via-violet-50 to-pink-50">
       <div className="absolute top-4 right-4 z-10">
         <ThemeToggle />
       </div>

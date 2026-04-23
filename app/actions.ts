@@ -51,7 +51,22 @@ export async function addParticipantAction(
   name: string,
   request: string,
 ): Promise<{ ok: boolean; error?: string; participantId?: string }> {
-  const result = await addParticipantStore(code, name, request)
+  const result = await addParticipantStore(code, name, request, {
+    present: true,
+  })
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true, participantId: result.participant.id }
+}
+
+export async function addOtherParticipantAction(
+  code: string,
+  name: string,
+  request: string,
+): Promise<{ ok: boolean; error?: string; participantId?: string }> {
+  const result = await addParticipantStore(code, name, request, {
+    present: false,
+  })
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true, participantId: result.participant.id }

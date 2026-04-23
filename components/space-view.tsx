@@ -143,10 +143,12 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
     await mutate()
   }
 
-  const canRandomize = space.participants.length >= 2
+  const presentCount = space.participants.filter((p) => p.present).length
+  const canRandomize = space.participants.length >= 2 && presentCount >= 1
+  const canRoulette = presentCount >= 1
 
   return (
-    <main className="animated-gradient min-h-svh bg-gradient-to-br from-indigo-50 via-violet-50 to-pink-50 dark:from-indigo-950/40 dark:via-violet-950/40 dark:to-pink-950/40">
+    <main className="animated-gradient min-h-svh bg-gradient-to-br from-indigo-50 via-violet-50 to-pink-50">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
         <div className="flex items-center justify-between gap-4">
           <Button asChild variant="ghost" size="sm">
@@ -231,7 +233,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                   size="lg"
                   variant="outline"
                   onClick={() => setRouletteOpen(true)}
-                  disabled={space.participants.length === 0}
+                  disabled={!canRoulette}
                   className="h-14 min-w-48 text-base"
                   title="Pick a random person to lead prayer"
                 >
@@ -265,21 +267,53 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
             </div>
           </div>
 
-          <div className="lg:col-span-2">
+          <div className="flex flex-col gap-4 lg:col-span-2">
+            {myId ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>You&apos;re in the circle</CardTitle>
+                  <CardDescription>
+                    Use &quot;Remove yourself&quot; on your row if you want to
+                    change your name or request.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Add yourself</CardTitle>
+                  <CardDescription>
+                    Enter your name and the prayer request you&apos;d like
+                    others to cover.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <AddParticipant
+                    code={space.code}
+                    mode="self"
+                    onAdded={(id) => {
+                      saveMyId(id)
+                      void mutate()
+                    }}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
-                <CardTitle>Add yourself</CardTitle>
+                <CardTitle>Add someone not here</CardTitle>
                 <CardDescription>
-                  {myId
-                    ? "You're in — but feel free to add more names."
-                    : "Enter your name and the prayer request you'd like others to cover."}
+                  Add a friend who isn&apos;t in the room so everyone can still
+                  pray for their request. They won&apos;t be assigned to pray
+                  and won&apos;t show up in the roulette.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <AddParticipant
                   code={space.code}
-                  onAdded={(id) => {
-                    if (!myId) saveMyId(id)
+                  mode="other"
+                  onAdded={() => {
                     void mutate()
                   }}
                 />
