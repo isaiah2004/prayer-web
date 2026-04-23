@@ -26,6 +26,7 @@ import { ParticipantsList } from "@/components/participants-list"
 import { RandomizeReveal } from "@/components/randomize-reveal"
 import { PrayerRoulette } from "@/components/prayer-roulette"
 import { VerseView } from "@/components/verse-view"
+import { ThemeToggle } from "@/components/theme-toggle"
 import type { SpacePublic } from "@/lib/types"
 import { randomizeAction, resetAction } from "@/app/actions"
 
@@ -117,7 +118,10 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
               Home
             </Link>
           </Button>
-          <CopyCode code={space.code} className="flex-1 sm:max-w-sm" />
+          <div className="flex flex-1 items-center justify-end gap-2 sm:max-w-sm">
+            <CopyCode code={space.code} className="flex-1" />
+            <ThemeToggle />
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-5">
