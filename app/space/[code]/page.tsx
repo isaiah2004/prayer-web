@@ -11,7 +11,7 @@ export default async function SpacePage({
 }) {
   const { code } = await params
   const upperCode = code.toUpperCase()
-  const space = getSpace(upperCode)
+  const space = await getSpace(upperCode)
   if (!space) notFound()
 
   return (

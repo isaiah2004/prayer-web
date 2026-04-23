@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params
-  const space = getSpace(code)
+  const space = await getSpace(code)
   if (!space) {
     return NextResponse.json({ error: "Space not found" }, { status: 404 })
   }

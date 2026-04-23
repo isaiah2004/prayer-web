@@ -1,4 +1,5 @@
 import { customAlphabet } from "nanoid"
+import { head, put, del } from "@vercel/blob"
 import type {
   Participant,
   RoulettePick,
@@ -13,27 +14,89 @@ const globalForStore = globalThis as unknown as {
   __prayerSpaces?: Map<string, Space>
 }
 
-const spaces: Map<string, Space> =
+const memSpaces: Map<string, Space> =
   globalForStore.__prayerSpaces ?? new Map<string, Space>()
 
 if (!globalForStore.__prayerSpaces) {
-  globalForStore.__prayerSpaces = spaces
+  globalForStore.__prayerSpaces = memSpaces
 }
 
 const nanoCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6)
 const nanoId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10)
 
-function gc() {
-  const now = Date.now()
-  for (const [key, space] of spaces) {
-    if (now - space.createdAt > SPACE_TTL_MS) spaces.delete(key)
+const USE_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN
+
+function blobPath(code: string): string {
+  return `spaces/${code}.json`
+}
+
+async function readSpaceFromBlob(code: string): Promise<Space | null> {
+  try {
+    const info = await head(blobPath(code))
+    if (!info?.url) return null
+    const res = await fetch(info.url, { cache: "no-store" })
+    if (!res.ok) return null
+    const space = (await res.json()) as Space
+    if (Date.now() - space.createdAt > SPACE_TTL_MS) {
+      try {
+        await del(info.url)
+      } catch {
+        /* ignore */
+      }
+      return null
+    }
+    return space
+  } catch (err) {
+    if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
+      return null
+    }
+    // Treat "not found" errors as null
+    const message = err instanceof Error ? err.message : String(err)
+    if (/not found|404/i.test(message)) return null
+    throw err
   }
 }
 
-export function createSpace(): Space {
-  gc()
+async function writeSpaceToBlob(space: Space): Promise<void> {
+  await put(blobPath(space.code), JSON.stringify(space), {
+    access: "public",
+    contentType: "application/json",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    cacheControlMaxAge: 0,
+  })
+}
+
+function gcMem() {
+  const now = Date.now()
+  for (const [key, space] of memSpaces) {
+    if (now - space.createdAt > SPACE_TTL_MS) memSpaces.delete(key)
+  }
+}
+
+async function loadSpace(code: string): Promise<Space | null> {
+  const upper = code.toUpperCase()
+  if (USE_BLOB) return readSpaceFromBlob(upper)
+  gcMem()
+  return memSpaces.get(upper) ?? null
+}
+
+async function persistSpace(space: Space): Promise<void> {
+  if (USE_BLOB) {
+    await writeSpaceToBlob(space)
+  } else {
+    memSpaces.set(space.code, space)
+  }
+}
+
+export async function createSpace(): Promise<Space> {
   let code = nanoCode()
-  while (spaces.has(code)) code = nanoCode()
+  // Avoid collisions.
+  for (let i = 0; i < 5; i++) {
+    const existing = await loadSpace(code)
+    if (!existing) break
+    code = nanoCode()
+  }
   const space: Space = {
     code,
     createdAt: Date.now(),
@@ -43,21 +106,22 @@ export function createSpace(): Space {
     roulette: { weights: {}, history: [] },
     verse: null,
   }
-  spaces.set(code, space)
+  await persistSpace(space)
   return space
 }
 
-export function getSpace(code: string): Space | null {
-  gc()
-  return spaces.get(code.toUpperCase()) ?? null
+export async function getSpace(code: string): Promise<Space | null> {
+  return loadSpace(code)
 }
 
-export function addParticipant(
+export async function addParticipant(
   code: string,
   name: string,
   request: string,
-): { space: Space; participant: Participant } | { error: string } {
-  const space = getSpace(code)
+): Promise<
+  { space: Space; participant: Participant } | { error: string }
+> {
+  const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   const cleanName = name.trim()
   if (!cleanName) return { error: "Name is required" }
@@ -77,14 +141,15 @@ export function addParticipant(
   space.roulette.weights[participant.id] = 1
   space.assignments = null
   space.randomizedAt = null
+  await persistSpace(space)
   return { space, participant }
 }
 
-export function removeParticipant(
+export async function removeParticipant(
   code: string,
   participantId: string,
-): { space: Space } | { error: string } {
-  const space = getSpace(code)
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   const next = space.participants.filter((p) => p.id !== participantId)
   if (next.length === space.participants.length)
@@ -96,6 +161,7 @@ export function removeParticipant(
   )
   space.assignments = null
   space.randomizedAt = null
+  await persistSpace(space)
   return { space }
 }
 
@@ -114,8 +180,10 @@ function derangementOrRotation<T>(items: T[]): T[] {
   return items.slice(1).concat(items[0])
 }
 
-export function randomize(code: string): { space: Space } | { error: string } {
-  const space = getSpace(code)
+export async function randomize(
+  code: string,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   if (space.participants.length < 2)
     return { error: "Need at least 2 participants to randomize" }
@@ -131,25 +199,27 @@ export function randomize(code: string): { space: Space } | { error: string } {
     request: targets[i].request,
   }))
   space.randomizedAt = Date.now()
+  await persistSpace(space)
   return { space }
 }
 
-export function resetAssignments(
+export async function resetAssignments(
   code: string,
-): { space: Space } | { error: string } {
-  const space = getSpace(code)
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   space.assignments = null
   space.randomizedAt = null
+  await persistSpace(space)
   return { space }
 }
 
 const MIN_WEIGHT = 1 / 1024
 
-export function spinRoulette(
+export async function spinRoulette(
   code: string,
-): { space: Space; pick: RoulettePick } | { error: string } {
-  const space = getSpace(code)
+): Promise<{ space: Space; pick: RoulettePick } | { error: string }> {
+  const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   if (space.participants.length === 0)
     return { error: "Add at least one person first" }
@@ -190,36 +260,40 @@ export function spinRoulette(
     pickedAt: Date.now(),
   }
   space.roulette.history = [pick, ...space.roulette.history].slice(0, 30)
+  await persistSpace(space)
   return { space, pick }
 }
 
-export function resetRoulette(
+export async function resetRoulette(
   code: string,
-): { space: Space } | { error: string } {
-  const space = getSpace(code)
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   space.roulette = {
     weights: Object.fromEntries(space.participants.map((p) => [p.id, 1])),
     history: [],
   }
+  await persistSpace(space)
   return { space }
 }
 
-export function setVerse(
+export async function setVerse(
   code: string,
   verse: Omit<VerseSelection, "updatedAt">,
-): { space: Space } | { error: string } {
-  const space = getSpace(code)
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   space.verse = { ...verse, updatedAt: Date.now() }
+  await persistSpace(space)
   return { space }
 }
 
-export function clearVerse(
+export async function clearVerse(
   code: string,
-): { space: Space } | { error: string } {
-  const space = getSpace(code)
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   space.verse = null
+  await persistSpace(space)
   return { space }
 }

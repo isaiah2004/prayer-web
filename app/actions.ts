@@ -16,12 +16,13 @@ import {
 } from "@/lib/store"
 import type {
   RoulettePick,
+  Space,
   SpacePublic,
   VerseSelection,
 } from "@/lib/types"
 import { parseReference } from "@/lib/bible/books"
 
-function toPublic(space: ReturnType<typeof getSpace>): SpacePublic | null {
+function toPublic(space: Space | null): SpacePublic | null {
   if (!space) return null
   const { createdAt: _ignored, ...rest } = space
   void _ignored
@@ -29,7 +30,7 @@ function toPublic(space: ReturnType<typeof getSpace>): SpacePublic | null {
 }
 
 export async function createSpaceAction() {
-  const space = createSpace()
+  const space = await createSpace()
   redirect(`/space/${space.code}`)
 }
 
@@ -40,7 +41,7 @@ export async function joinSpaceAction(
   const raw = String(formData.get("code") ?? "").trim()
   const code = raw.toUpperCase().replace(/\s+/g, "")
   if (!code) return { error: "Enter a space code" }
-  const space = getSpace(code)
+  const space = await getSpace(code)
   if (!space) return { error: "Space not found" }
   redirect(`/space/${space.code}`)
 }
@@ -50,7 +51,7 @@ export async function addParticipantAction(
   name: string,
   request: string,
 ): Promise<{ ok: boolean; error?: string; participantId?: string }> {
-  const result = addParticipantStore(code, name, request)
+  const result = await addParticipantStore(code, name, request)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true, participantId: result.participant.id }
@@ -60,7 +61,7 @@ export async function removeParticipantAction(
   code: string,
   participantId: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const result = removeParticipantStore(code, participantId)
+  const result = await removeParticipantStore(code, participantId)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }
@@ -69,7 +70,7 @@ export async function removeParticipantAction(
 export async function randomizeAction(
   code: string,
 ): Promise<{ ok: boolean; error?: string; space?: SpacePublic }> {
-  const result = randomizeStore(code)
+  const result = await randomizeStore(code)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true, space: toPublic(result.space)! }
@@ -78,7 +79,7 @@ export async function randomizeAction(
 export async function resetAction(
   code: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const result = resetStore(code)
+  const result = await resetStore(code)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }
@@ -87,7 +88,7 @@ export async function resetAction(
 export async function spinRouletteAction(
   code: string,
 ): Promise<{ ok: boolean; error?: string; pick?: RoulettePick }> {
-  const result = spinRouletteStore(code)
+  const result = await spinRouletteStore(code)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true, pick: result.pick }
@@ -96,7 +97,7 @@ export async function spinRouletteAction(
 export async function resetRouletteAction(
   code: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const result = resetRouletteStore(code)
+  const result = await resetRouletteStore(code)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }
@@ -117,7 +118,7 @@ export async function setVerseAction(
       ok: false,
       error: 'Could not parse reference. Try "John 3:16" or "Psalm 23".',
     }
-  const result = setVerseStore(code, {
+  const result = await setVerseStore(code, {
     reference: parsed.canonical,
     book: parsed.book.usfm,
     chapter: parsed.chapter,
@@ -135,7 +136,7 @@ export async function setVerseAction(
 export async function clearVerseAction(
   code: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const result = clearVerseStore(code)
+  const result = await clearVerseStore(code)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }
