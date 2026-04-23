@@ -34,6 +34,12 @@ export function PrayerRoulette({
   const [pick, setPick] = React.useState<RoulettePick | null>(null)
   const [spinning, setSpinning] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  // While spinning, show a frozen snapshot of the weights so the odds
+  // display doesn't leak the pick via SWR polling mid-animation.
+  const [frozenWeights, setFrozenWeights] = React.useState<
+    Record<string, number> | null
+  >(null)
+  const displayedWeights = frozenWeights ?? weights
 
   React.useEffect(() => {
     if (!open) return
@@ -60,6 +66,7 @@ export function PrayerRoulette({
   async function spin() {
     if (spinning || participants.length === 0) return
     setError(null)
+    setFrozenWeights(weights)
     setSpinning(true)
     setPick(null)
 
@@ -77,6 +84,7 @@ export function PrayerRoulette({
     if (!result.ok || !result.pick) {
       setError(result.error ?? "Couldn't spin")
       setSpinning(false)
+      setFrozenWeights(null)
       return
     }
 
@@ -100,6 +108,7 @@ export function PrayerRoulette({
         onComplete: () => {
           setPick(picked)
           setSpinning(false)
+          setFrozenWeights(null)
           onChange?.()
           requestAnimationFrame(() => {
             const el = resultRef.current
@@ -239,7 +248,10 @@ export function PrayerRoulette({
               <div className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">
                 Current odds
               </div>
-              <OddsList participants={participants} weights={weights} />
+              <OddsList
+                participants={participants}
+                weights={displayedWeights}
+              />
             </div>
           ) : null}
 
