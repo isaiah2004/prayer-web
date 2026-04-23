@@ -1,5 +1,5 @@
 import { customAlphabet } from "nanoid"
-import { head, put, del } from "@vercel/blob"
+import { get, put, del } from "@vercel/blob"
 import type {
   Participant,
   RoulettePick,
@@ -32,14 +32,17 @@ function blobPath(code: string): string {
 
 async function readSpaceFromBlob(code: string): Promise<Space | null> {
   try {
-    const info = await head(blobPath(code))
-    if (!info?.url) return null
-    const res = await fetch(info.url, { cache: "no-store" })
-    if (!res.ok) return null
-    const space = (await res.json()) as Space
+    const result = await get(blobPath(code), {
+      access: "private",
+      useCache: false,
+    })
+    if (!result || result.statusCode !== 200) return null
+    const text = await new Response(result.stream).text()
+    if (!text) return null
+    const space = JSON.parse(text) as Space
     if (Date.now() - space.createdAt > SPACE_TTL_MS) {
       try {
-        await del(info.url)
+        await del(blobPath(code))
       } catch {
         /* ignore */
       }
@@ -47,19 +50,15 @@ async function readSpaceFromBlob(code: string): Promise<Space | null> {
     }
     return space
   } catch (err) {
-    if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
-      return null
-    }
-    // Treat "not found" errors as null
     const message = err instanceof Error ? err.message : String(err)
-    if (/not found|404/i.test(message)) return null
+    if (/not.found|404/i.test(message)) return null
     throw err
   }
 }
 
 async function writeSpaceToBlob(space: Space): Promise<void> {
   await put(blobPath(space.code), JSON.stringify(space), {
-    access: "public",
+    access: "private",
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
