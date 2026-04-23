@@ -31,6 +31,7 @@ import type { RoulettePick, SpacePublic } from "@/lib/types"
 import { randomizeAction, resetAction } from "@/app/actions"
 
 const MY_ID_KEY = (code: string) => `prayer-web:my-id:${code}`
+const LAST_NAME_KEY = "prayer-web:last-name"
 
 async function fetcher(url: string) {
   const res = await fetch(url, { cache: "no-store" })
@@ -97,17 +98,36 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
   React.useEffect(() => {
     try {
       const stored = localStorage.getItem(MY_ID_KEY(space.code))
-      if (!stored) return
-      if (space.participants.some((p) => p.id === stored)) {
-        setMyId(stored)
-      } else if (space.participants.length > 0) {
-        // Participants loaded but our stored id isn't among them — they were
-        // removed. Clear so we don't falsely claim someone else's identity.
-        localStorage.removeItem(MY_ID_KEY(space.code))
+      if (stored) {
+        if (space.participants.some((p) => p.id === stored)) {
+          setMyId(stored)
+          return
+        } else if (space.participants.length > 0) {
+          // Participants loaded but our stored id isn't among them — they
+          // were removed. Clear so we don't falsely claim someone else's
+          // identity.
+          localStorage.removeItem(MY_ID_KEY(space.code))
+        }
+      }
+      // Fallback: match by last-name that this browser used when adding
+      // someone else (e.g. if saveMyId was lost to a race, or localStorage
+      // was cleared between sessions). Only auto-claim when exactly one
+      // present participant has that name.
+      const lastName = localStorage.getItem(LAST_NAME_KEY)?.trim().toLowerCase()
+      if (!lastName) {
+        setMyId(null)
+        return
+      }
+      const matches = space.participants.filter(
+        (p) => p.present && p.name.trim().toLowerCase() === lastName,
+      )
+      if (matches.length === 1) {
+        const match = matches[0]
+        localStorage.setItem(MY_ID_KEY(space.code), match.id)
+        setMyId(match.id)
+      } else {
         setMyId(null)
       }
-      // If participants are empty (initial load / refetch race), leave stored
-      // in place and let the next tick pick it up.
     } catch {
       /* ignore */
     }
@@ -210,7 +230,6 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                   onChange={() => {
                     void mutate()
                   }}
-                  onClaim={(id) => saveMyId(id)}
                 />
               </CardContent>
             </Card>

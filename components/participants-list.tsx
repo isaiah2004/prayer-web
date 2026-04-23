@@ -13,13 +13,11 @@ export function ParticipantsList({
   participants,
   myId,
   onChange,
-  onClaim,
 }: {
   code: string
   participants: Participant[]
   myId: string | null
   onChange?: () => void
-  onClaim?: (participantId: string) => void
 }) {
   if (participants.length === 0) {
     return (
@@ -28,10 +26,6 @@ export function ParticipantsList({
       </div>
     )
   }
-  // If no one is claimed as "me" on this client, present people can be
-  // claimed — useful when localStorage was cleared or the initial self-add
-  // didn't persist.
-  const claimAvailable = myId == null
   return (
     <ul className="flex flex-col gap-3">
       {participants.map((p) => (
@@ -40,9 +34,7 @@ export function ParticipantsList({
           code={code}
           participant={p}
           isMe={p.id === myId}
-          claimAvailable={claimAvailable}
           onChange={onChange}
-          onClaim={onClaim}
         />
       ))}
     </ul>
@@ -53,16 +45,12 @@ function ParticipantRow({
   code,
   participant,
   isMe,
-  claimAvailable,
   onChange,
-  onClaim,
 }: {
   code: string
   participant: Participant
   isMe: boolean
-  claimAvailable: boolean
   onChange?: () => void
-  onClaim?: (participantId: string) => void
 }) {
   const [removing, setRemoving] = React.useState(false)
   const [expanded, setExpanded] = React.useState(false)
@@ -129,31 +117,18 @@ function ParticipantRow({
             />
           ) : null}
         </div>
-        <div className="flex items-center gap-1">
-          {claimAvailable && !absent ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              onClick={() => onClaim?.(participant.id)}
-              title="Claim this row as you. Useful if the app forgot who you are."
-            >
-              This is me
-            </Button>
-          ) : null}
-          {isMe || absent ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={remove}
-              disabled={removing}
-              aria-label={isMe ? "Remove yourself" : "Remove this person"}
-            >
-              <Trash2 />
-            </Button>
-          ) : null}
-        </div>
+        {isMe || absent ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={remove}
+            disabled={removing}
+            aria-label={isMe ? "Remove yourself" : "Remove this person"}
+          >
+            <Trash2 />
+          </Button>
+        ) : null}
       </div>
     </li>
   )
