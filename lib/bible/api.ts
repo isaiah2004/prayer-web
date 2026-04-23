@@ -1,8 +1,13 @@
+import { BOOKS } from "./books"
+
+export type TranslationProvider = "helloao" | "bolls"
+
 export type TranslationInfo = {
   id: string
   shortName: string
   englishName: string
   language: string
+  provider: TranslationProvider
 }
 
 export type VerseFragment = {
@@ -29,17 +34,34 @@ export type CommentaryResult = {
   combinedText: string
 }
 
-const API_BASE = "https://bible.helloao.org/api"
+const HELLOAO_BASE = "https://bible.helloao.org/api"
+const BOLLS_BASE = "https://bolls.life"
 
 export const FEATURED_TRANSLATIONS: TranslationInfo[] = [
-  { id: "BSB", shortName: "BSB", englishName: "Berean Standard Bible", language: "eng" },
-  { id: "ENGWEBP", shortName: "WEB", englishName: "World English Bible", language: "eng" },
-  { id: "eng_kjv", shortName: "KJV", englishName: "King James Version", language: "eng" },
-  { id: "eng_asv", shortName: "ASV", englishName: "American Standard Version", language: "eng" },
-  { id: "eng_ylt", shortName: "YLT", englishName: "Young's Literal Translation", language: "eng" },
-  { id: "hbo_wlc", shortName: "WLC", englishName: "Hebrew OT (Westminster Leningrad Codex)", language: "hbo" },
-  { id: "grc_sbl", shortName: "SBLGNT", englishName: "SBL Greek NT", language: "grc" },
-  { id: "grc_byz", shortName: "BYZ", englishName: "Byzantine Greek NT", language: "grc" },
+  // Modern (via bolls.life — users must hold their own license rights)
+  { id: "bolls:NIV", shortName: "NIV", englishName: "New International Version", language: "eng", provider: "bolls" },
+  { id: "bolls:NKJV", shortName: "NKJV", englishName: "New King James Version", language: "eng", provider: "bolls" },
+  { id: "bolls:ESV", shortName: "ESV", englishName: "English Standard Version", language: "eng", provider: "bolls" },
+  { id: "bolls:NASB", shortName: "NASB", englishName: "New American Standard Bible", language: "eng", provider: "bolls" },
+  { id: "bolls:NLT", shortName: "NLT", englishName: "New Living Translation", language: "eng", provider: "bolls" },
+  { id: "bolls:AMP", shortName: "AMP", englishName: "Amplified Bible", language: "eng", provider: "bolls" },
+  { id: "bolls:MSG", shortName: "MSG", englishName: "The Message", language: "eng", provider: "bolls" },
+  // Public-domain / permissively-licensed (via helloao)
+  { id: "BSB", shortName: "BSB", englishName: "Berean Standard Bible", language: "eng", provider: "helloao" },
+  { id: "ENGWEBP", shortName: "WEB", englishName: "World English Bible", language: "eng", provider: "helloao" },
+  { id: "eng_net", shortName: "NET", englishName: "NET Bible", language: "eng", provider: "helloao" },
+  { id: "eng_lsv", shortName: "LSV", englishName: "Literal Standard Version", language: "eng", provider: "helloao" },
+  { id: "eng_fbv", shortName: "FBV", englishName: "Free Bible Version", language: "eng", provider: "helloao" },
+  { id: "eng_kjv", shortName: "KJV", englishName: "King James Version", language: "eng", provider: "helloao" },
+  { id: "eng_asv", shortName: "ASV", englishName: "American Standard Version", language: "eng", provider: "helloao" },
+  { id: "eng_ylt", shortName: "YLT", englishName: "Young's Literal Translation", language: "eng", provider: "helloao" },
+  { id: "eng_dra", shortName: "DRA", englishName: "Douay-Rheims (1899)", language: "eng", provider: "helloao" },
+  { id: "eng_gnv", shortName: "GNV", englishName: "Geneva Bible (1599)", language: "eng", provider: "helloao" },
+  { id: "eng_dby", shortName: "DBY", englishName: "Darby Translation", language: "eng", provider: "helloao" },
+  // Original languages
+  { id: "hbo_wlc", shortName: "WLC", englishName: "Hebrew OT (Westminster Leningrad Codex)", language: "hbo", provider: "helloao" },
+  { id: "grc_sbl", shortName: "SBLGNT", englishName: "SBL Greek NT", language: "grc", provider: "helloao" },
+  { id: "grc_byz", shortName: "BYZ", englishName: "Byzantine Greek NT", language: "grc", provider: "helloao" },
 ]
 
 export const FEATURED_COMMENTARIES: CommentaryInfo[] = [
@@ -55,6 +77,13 @@ function findTranslation(id: string): TranslationInfo | null {
 
 function findCommentary(id: string): CommentaryInfo | null {
   return FEATURED_COMMENTARIES.find((c) => c.id === id) ?? null
+}
+
+// bolls.life uses 1-indexed book numbers in canonical order. Our BOOKS array
+// is in the same canonical order, so index+1 is the mapping.
+function bollsBookNumber(usfm: string): number | null {
+  const idx = BOOKS.findIndex((b) => b.usfm === usfm)
+  return idx === -1 ? null : idx + 1
 }
 
 type HelloAOChapterContent =
@@ -81,17 +110,22 @@ function flattenContent(parts: Array<string | { text?: string } | unknown>): str
     .trim()
 }
 
-export async function fetchVerse(args: {
-  translationId: string
+function stripBollsTags(html: string): string {
+  return html
+    .replace(/<br\s*\/?\s*>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+async function fetchHelloAO(args: {
+  translation: TranslationInfo
   book: string
   chapter: number
   verseStart: number
   verseEnd?: number
 }): Promise<VerseResult> {
-  const translation = findTranslation(args.translationId)
-  if (!translation) throw new Error("Unknown translation")
-
-  const url = `${API_BASE}/${translation.id}/${args.book}/${args.chapter}.json`
+  const url = `${HELLOAO_BASE}/${args.translation.id}/${args.book}/${args.chapter}.json`
   const res = await fetch(url, { next: { revalidate: 60 * 60 * 24 } })
   if (!res.ok) throw new Error(`Bible API error: ${res.status}`)
   const data = (await res.json()) as {
@@ -114,7 +148,57 @@ export async function fetchVerse(args: {
     args.verseStart === end ? `${args.verseStart}` : `${args.verseStart}-${end}`
   const reference = `${bookName} ${args.chapter}:${refRange}`
   const combinedText = verses.map((v) => v.text).join(" ")
-  return { translation, reference, verses, combinedText }
+  return { translation: args.translation, reference, verses, combinedText }
+}
+
+async function fetchBolls(args: {
+  translation: TranslationInfo
+  book: string
+  chapter: number
+  verseStart: number
+  verseEnd?: number
+}): Promise<VerseResult> {
+  const bookNum = bollsBookNumber(args.book)
+  if (bookNum == null) throw new Error("Unknown book for bolls.life")
+  const code = args.translation.id.replace(/^bolls:/, "")
+  const url = `${BOLLS_BASE}/get-chapter/${code}/${bookNum}/${args.chapter}/`
+  const res = await fetch(url, { next: { revalidate: 60 * 60 * 24 } })
+  if (!res.ok) throw new Error(`Bible API error: ${res.status}`)
+  const data = (await res.json()) as Array<{
+    verse: number
+    text: string
+  }>
+
+  const verses: VerseFragment[] = []
+  const end = args.verseEnd ?? args.verseStart
+  for (const v of data) {
+    if (v.verse >= args.verseStart && v.verse <= end) {
+      verses.push({ number: v.verse, text: stripBollsTags(v.text) })
+    }
+  }
+  const bookMeta = BOOKS.find((b) => b.usfm === args.book)
+  const bookName = bookMeta?.name ?? args.book
+  const refRange =
+    args.verseStart === end ? `${args.verseStart}` : `${args.verseStart}-${end}`
+  const reference = `${bookName} ${args.chapter}:${refRange}`
+  const combinedText = verses.map((v) => v.text).join(" ")
+  return { translation: args.translation, reference, verses, combinedText }
+}
+
+export async function fetchVerse(args: {
+  translationId: string
+  book: string
+  chapter: number
+  verseStart: number
+  verseEnd?: number
+}): Promise<VerseResult> {
+  const translation = findTranslation(args.translationId)
+  if (!translation) throw new Error("Unknown translation")
+
+  if (translation.provider === "bolls") {
+    return fetchBolls({ ...args, translation })
+  }
+  return fetchHelloAO({ ...args, translation })
 }
 
 export async function fetchCommentary(args: {
@@ -127,7 +211,7 @@ export async function fetchCommentary(args: {
   const commentary = findCommentary(args.commentaryId)
   if (!commentary) throw new Error("Unknown commentary")
 
-  const url = `${API_BASE}/c/${commentary.id}/${args.book}/${args.chapter}.json`
+  const url = `${HELLOAO_BASE}/c/${commentary.id}/${args.book}/${args.chapter}.json`
   const res = await fetch(url, { next: { revalidate: 60 * 60 * 24 } })
   if (!res.ok) throw new Error(`Commentary API error: ${res.status}`)
   const data = (await res.json()) as {

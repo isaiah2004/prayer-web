@@ -173,22 +173,27 @@ export function RandomizeReveal({
           <div
             ref={shuffleRef}
             className={cn(
-              "absolute inset-0 flex items-center justify-center",
+              "absolute inset-0 flex items-center justify-center transition-opacity",
               phase !== "shuffling" && "pointer-events-none opacity-0",
             )}
           >
-            <div className="relative h-40 w-full max-w-sm">
+            <div className="relative h-64 w-full max-w-md">
               {participants.slice(0, 12).map((p, i) => (
                 <div
                   key={p.id}
                   data-shuffle-card
-                  className="bg-gradient-to-br from-indigo-500 to-pink-500 text-primary-foreground absolute top-1/2 left-1/2 flex h-20 w-40 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-xl px-4 text-sm font-semibold shadow-lg"
+                  className="bg-gradient-to-br from-indigo-500 via-violet-500 to-pink-500 text-primary-foreground absolute top-1/2 left-1/2 flex h-28 w-52 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl px-4 text-base font-semibold shadow-2xl ring-1 ring-white/20"
                   style={{
-                    transform: `translate(-50%, -50%) rotate(${((i % 5) - 2) * 4}deg)`,
+                    transform: `translate(-50%, -50%) rotate(${((i % 5) - 2) * 6}deg)`,
                     zIndex: i,
                   }}
                 >
-                  <span className="truncate">{p.name}</span>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-[10px] font-medium tracking-widest uppercase opacity-70">
+                      Pray for
+                    </span>
+                    <span className="truncate text-lg">{p.name}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -196,8 +201,9 @@ export function RandomizeReveal({
           <div
             ref={resultRef}
             className={cn(
-              "flex flex-col gap-3 p-5",
-              phase === "shuffling" && "pointer-events-none opacity-0",
+              "flex flex-col gap-3 p-5 transition-opacity",
+              phase !== "revealing" && phase !== "done" &&
+                "pointer-events-none opacity-0",
             )}
           >
             {orderedAssignments.map((assignment) => {

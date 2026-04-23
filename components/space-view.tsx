@@ -27,7 +27,7 @@ import { RandomizeReveal } from "@/components/randomize-reveal"
 import { PrayerRoulette } from "@/components/prayer-roulette"
 import { VerseView } from "@/components/verse-view"
 import { ThemeToggle } from "@/components/theme-toggle"
-import type { SpacePublic } from "@/lib/types"
+import type { RoulettePick, SpacePublic } from "@/lib/types"
 import { randomizeAction, resetAction } from "@/app/actions"
 
 const MY_ID_KEY = (code: string) => `prayer-web:my-id:${code}`
@@ -44,7 +44,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
     fetcher,
     {
       fallbackData: initial,
-      refreshInterval: 3000,
+      refreshInterval: 1500,
       revalidateOnFocus: true,
     },
   )
@@ -56,6 +56,43 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
   const [verseOpen, setVerseOpen] = React.useState(false)
   const [randomizing, setRandomizing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+
+  // Broadcast sync: remember which events we've already surfaced, so the
+  // next SWR tick can auto-open the matching modal for everyone in the room.
+  const seenRandomizedAtRef = React.useRef<number | null>(
+    initial.randomizedAt ?? null,
+  )
+  const seenSpinAtRef = React.useRef<number | null>(
+    initial.roulette?.history?.[0]?.pickedAt ?? null,
+  )
+  const latestSpin: RoulettePick | null =
+    space.roulette?.history?.[0] ?? null
+  const [pendingPick, setPendingPick] = React.useState<RoulettePick | null>(
+    null,
+  )
+
+  React.useEffect(() => {
+    if (!space.randomizedAt) return
+    if (
+      seenRandomizedAtRef.current == null ||
+      space.randomizedAt > seenRandomizedAtRef.current
+    ) {
+      seenRandomizedAtRef.current = space.randomizedAt
+      setRevealOpen(true)
+    }
+  }, [space.randomizedAt])
+
+  React.useEffect(() => {
+    if (!latestSpin) return
+    if (
+      seenSpinAtRef.current == null ||
+      latestSpin.pickedAt > seenSpinAtRef.current
+    ) {
+      seenSpinAtRef.current = latestSpin.pickedAt
+      setRouletteOpen(true)
+      setPendingPick(latestSpin)
+    }
+  }, [latestSpin])
 
   React.useEffect(() => {
     try {
@@ -266,6 +303,8 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
         participants={space.participants}
         history={space.roulette?.history ?? []}
         weights={space.roulette?.weights ?? {}}
+        pendingPick={pendingPick}
+        onPickShown={() => setPendingPick(null)}
         onClose={() => setRouletteOpen(false)}
         onChange={() => {
           void mutate()

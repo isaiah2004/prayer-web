@@ -15,6 +15,14 @@ type Props = {
   participants: Participant[]
   history: RoulettePick[]
   weights: Record<string, number>
+  /**
+   * When set, the modal runs the spin animation landing on this pick.
+   * The parent sets this whenever a new pick arrives (local click or
+   * broadcast from another client) and clears it via onPickShown after
+   * the reveal completes.
+   */
+  pendingPick?: RoulettePick | null
+  onPickShown?: (pickedAt: number) => void
   onClose: () => void
   onChange?: () => void
 }
@@ -25,6 +33,8 @@ export function PrayerRoulette({
   participants,
   history,
   weights,
+  pendingPick,
+  onPickShown,
   onClose,
   onChange,
 }: Props) {
@@ -34,12 +44,84 @@ export function PrayerRoulette({
   const [pick, setPick] = React.useState<RoulettePick | null>(null)
   const [spinning, setSpinning] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  // While spinning, show a frozen snapshot of the weights so the odds
-  // display doesn't leak the pick via SWR polling mid-animation.
-  const [frozenWeights, setFrozenWeights] = React.useState<
-    Record<string, number> | null
-  >(null)
-  const displayedWeights = frozenWeights ?? weights
+
+  // Freeze weights displayed while the reel is spinning so odds don't leak.
+  const preSpinWeightsRef = React.useRef(weights)
+  React.useEffect(() => {
+    if (!spinning) preSpinWeightsRef.current = weights
+  }, [spinning, weights])
+  const displayedWeights = spinning ? preSpinWeightsRef.current : weights
+
+  // Track which picks we've already animated so we only show each once.
+  const shownPickAtRef = React.useRef<number | null>(null)
+
+  const runAnimation = React.useCallback(
+    (picked: RoulettePick) => {
+      const reel = reelRef.current
+      setError(null)
+      setSpinning(true)
+      setPick(null)
+      if (reel) {
+        gsap.killTweensOf(reel)
+        gsap.set(reel, { y: 0 })
+      }
+
+      const itemHeight = 64
+      const stripCount = 40
+      const idx = Math.max(
+        0,
+        participants.findIndex((p) => p.id === picked.participantId),
+      )
+      const landingIndex = idx + participants.length * (stripCount - 5)
+
+      const finish = () => {
+        setPick(picked)
+        setSpinning(false)
+        shownPickAtRef.current = picked.pickedAt
+        onPickShown?.(picked.pickedAt)
+        onChange?.()
+      }
+
+      if (!reel || participants.length === 0) {
+        finish()
+        return
+      }
+
+      gsap.to(reel, {
+        y: -landingIndex * itemHeight,
+        duration: 3.4,
+        ease: "power4.out",
+        onComplete: () => {
+          finish()
+          requestAnimationFrame(() => {
+            const el = resultRef.current
+            if (el) {
+              gsap.fromTo(
+                el,
+                { y: 20, opacity: 0, scale: 0.96 },
+                {
+                  y: 0,
+                  opacity: 1,
+                  scale: 1,
+                  duration: 0.5,
+                  ease: "back.out(1.8)",
+                },
+              )
+            }
+          })
+        },
+      })
+    },
+    [participants, onChange, onPickShown],
+  )
+
+  // When the parent signals a new pending pick, run the animation once.
+  React.useEffect(() => {
+    if (!open || !pendingPick || spinning) return
+    const seen = shownPickAtRef.current
+    if (seen != null && pendingPick.pickedAt <= seen) return
+    runAnimation(pendingPick)
+  }, [open, pendingPick, spinning, runAnimation])
 
   React.useEffect(() => {
     if (!open) return
@@ -66,72 +148,14 @@ export function PrayerRoulette({
   async function spin() {
     if (spinning || participants.length === 0) return
     setError(null)
-    setFrozenWeights(weights)
-    setSpinning(true)
-    setPick(null)
-
-    const reel = reelRef.current
-    if (reel) {
-      gsap.killTweensOf(reel)
-      gsap.set(reel, { y: 0 })
-    }
-
-    const [result] = await Promise.all([
-      spinRouletteAction(code),
-      new Promise<void>((r) => setTimeout(r, 150)),
-    ])
-
+    const result = await spinRouletteAction(code)
     if (!result.ok || !result.pick) {
       setError(result.error ?? "Couldn't spin")
-      setSpinning(false)
-      setFrozenWeights(null)
       return
     }
-
-    const picked = result.pick
-
-    const itemHeight = 64
-    const stripCount = 40
-    const landingIndex =
-      Math.max(
-        0,
-        participants.findIndex((p) => p.id === picked.participantId),
-      ) +
-      participants.length * (stripCount - 5)
-
-    if (reel) {
-      gsap.set(reel, { y: 0 })
-      gsap.to(reel, {
-        y: -landingIndex * itemHeight,
-        duration: 3.4,
-        ease: "power4.out",
-        onComplete: () => {
-          setPick(picked)
-          setSpinning(false)
-          setFrozenWeights(null)
-          onChange?.()
-          requestAnimationFrame(() => {
-            const el = resultRef.current
-            if (el) {
-              gsap.fromTo(
-                el,
-                { y: 20, opacity: 0, scale: 0.96 },
-                {
-                  y: 0,
-                  opacity: 1,
-                  scale: 1,
-                  duration: 0.5,
-                  ease: "back.out(1.8)",
-                },
-              )
-            }
-          })
-        },
-      })
-    } else {
-      setPick(picked)
-      setSpinning(false)
-    }
+    // Notify parent so SWR refetches; that will drive the animation via the
+    // "new pick arrived" effect above (same path used by remote clients).
+    onChange?.()
   }
 
   async function resetWeights() {
