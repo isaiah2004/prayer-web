@@ -21,8 +21,17 @@ import {
   setJoinMode as setJoinModeStore,
   approveJoinRequest as approveJoinRequestStore,
   denyJoinRequest as denyJoinRequestStore,
+  recordCallStart as recordCallStartStore,
+  recordCallEnd as recordCallEndStore,
+  assertParticipantInSpace,
+  peekSpace,
   getSpace,
 } from "@/lib/store"
+import {
+  ensureRoom,
+  deleteRoom,
+  mintMeetingToken,
+} from "@/lib/daily"
 import type {
   JoinMode,
   PendingKind,
@@ -324,4 +333,73 @@ export async function denyJoinRequestAction(
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }
+}
+
+export async function startCallAction(
+  code: string,
+  adminToken: string | null,
+): Promise<{ ok: boolean; error?: string; roomUrl?: string }> {
+  const peek = await peekSpace(code)
+  if ("error" in peek) return { ok: false, error: peek.error }
+  if (peek.space.adminToken !== adminToken) {
+    return { ok: false, error: "Only the admin can start the call." }
+  }
+  try {
+    const { url } = await ensureRoom(code)
+    const saved = await recordCallStartStore(code, adminToken, url)
+    if ("error" in saved) return { ok: false, error: saved.error }
+    revalidatePath(`/space/${code}`)
+    return { ok: true, roomUrl: url }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Couldn't start call",
+    }
+  }
+}
+
+export async function endCallAction(
+  code: string,
+  adminToken: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await recordCallEndStore(code, adminToken)
+  if ("error" in result) return { ok: false, error: result.error }
+  // Best-effort delete on Daily — non-fatal if it fails.
+  try {
+    await deleteRoom(code)
+  } catch {
+    /* ignore */
+  }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function mintCallTokenAction(
+  code: string,
+  participantId: string,
+  adminToken: string | null,
+): Promise<{ ok: boolean; error?: string; token?: string; roomUrl?: string }> {
+  const peek = await peekSpace(code)
+  if ("error" in peek) return { ok: false, error: peek.error }
+  if (!peek.space.callRoomUrl) {
+    return { ok: false, error: "No active call to join." }
+  }
+  const verified = await assertParticipantInSpace(code, participantId)
+  if ("error" in verified) return { ok: false, error: verified.error }
+  const isOwner =
+    !!adminToken && adminToken === peek.space.adminToken
+  try {
+    const token = await mintMeetingToken({
+      code,
+      participantName: verified.participant.name,
+      participantId: verified.participant.id,
+      isOwner,
+    })
+    return { ok: true, token, roomUrl: peek.space.callRoomUrl }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Couldn't mint token",
+    }
+  }
 }

@@ -25,5 +25,7 @@ export async function GET(
     presenterRequests: space.presenterRequests,
     joinMode: space.joinMode,
     joinRequests: space.joinRequests,
+    callRoomUrl: space.callRoomUrl,
+    callStartedAt: space.callStartedAt,
   })
 }

@@ -7,9 +7,11 @@ import {
   ArrowLeft,
   BookOpen,
   Dices,
+  PhoneCall,
   RefreshCcw,
   Shuffle,
   Sparkles,
+  Video,
 } from "lucide-react"
 
 import {
@@ -26,6 +28,7 @@ import { ParticipantsList } from "@/components/participants-list"
 import { RandomizeReveal } from "@/components/randomize-reveal"
 import { PrayerRoulette } from "@/components/prayer-roulette"
 import { VerseView } from "@/components/verse-view"
+import { VideoCall } from "@/components/video-call"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { AdminRequestsBanner } from "@/components/admin-requests-banner"
 import type { RoulettePick, SpacePublic } from "@/lib/types"
@@ -42,6 +45,8 @@ import {
   setJoinModeAction,
   approveJoinRequestAction,
   denyJoinRequestAction,
+  startCallAction,
+  endCallAction,
 } from "@/app/actions"
 
 const MY_ID_KEY = (code: string) => `prayer-web:my-id:${code}`
@@ -72,6 +77,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
   const [revealOpen, setRevealOpen] = React.useState(false)
   const [rouletteOpen, setRouletteOpen] = React.useState(false)
   const [verseOpen, setVerseOpen] = React.useState(false)
+  const [callOpen, setCallOpen] = React.useState(false)
   const [randomizing, setRandomizing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const isAdmin = !!adminToken
@@ -296,6 +302,29 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
     await mutate()
   }
 
+  async function onStartCall() {
+    if (!isAdmin || !myId) return
+    const result = await startCallAction(space.code, adminToken)
+    if (!result.ok) {
+      setError(result.error ?? "Couldn't start the call")
+      return
+    }
+    await mutate()
+    setCallOpen(true)
+  }
+
+  async function onEndCall() {
+    if (!isAdmin) return
+    await endCallAction(space.code, adminToken)
+    await mutate()
+    setCallOpen(false)
+  }
+
+  function onJoinCall() {
+    if (!myId) return
+    setCallOpen(true)
+  }
+
   const presentCount = space.participants.filter((p) => p.present).length
   const canRandomize = space.participants.length >= 2 && presentCount >= 1
   const canRoulette = presentCount >= 1
@@ -497,6 +526,32 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                     </span>
                   ) : null}
                 </Button>
+                {space.callRoomUrl ? (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={onJoinCall}
+                    disabled={!myId}
+                    className="h-14 min-w-48 border-emerald-500/40 bg-emerald-500/10 text-emerald-600 text-base hover:bg-emerald-500/20 dark:text-emerald-400"
+                    title="Join the live video call"
+                  >
+                    <Video data-icon="inline-start" />
+                    Join call
+                    <span className="bg-emerald-500 ml-1 inline-block size-2 animate-pulse rounded-full" />
+                  </Button>
+                ) : isAdmin ? (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={onStartCall}
+                    disabled={!myId}
+                    className="h-14 min-w-48 text-base"
+                    title="Start a video call for the group"
+                  >
+                    <PhoneCall data-icon="inline-start" />
+                    Start call
+                  </Button>
+                ) : null}
               </div>
               <p className="text-muted-foreground text-center text-xs">
                 {canRandomize
@@ -619,6 +674,15 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
         onChange={() => {
           void mutate()
         }}
+      />
+
+      <VideoCall
+        open={callOpen}
+        code={space.code}
+        roomUrl={space.callRoomUrl ?? null}
+        myId={myId}
+        adminToken={adminToken}
+        onClose={() => setCallOpen(false)}
       />
     </main>
   )

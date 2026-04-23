@@ -62,6 +62,8 @@ function migrateSpace(space: Space): Space {
   if (!Array.isArray(space.presenterRequests)) space.presenterRequests = []
   if (space.joinMode !== "request") space.joinMode = "open"
   if (!Array.isArray(space.joinRequests)) space.joinRequests = []
+  if (typeof space.callRoomUrl !== "string") space.callRoomUrl = null
+  if (typeof space.callStartedAt !== "number") space.callStartedAt = null
   return space
 }
 
@@ -146,6 +148,8 @@ export async function createSpace(): Promise<Space> {
     presenterRequests: [],
     joinMode: "open",
     joinRequests: [],
+    callRoomUrl: null,
+    callStartedAt: null,
   }
   await persistSpace(space)
   return space
@@ -268,6 +272,54 @@ export async function denyJoinRequest(
     return { error: "Only the admin can deny joins." }
   space.joinRequests = space.joinRequests.filter((r) => r.id !== requestId)
   await persistSpace(space)
+  return { space }
+}
+
+export async function recordCallStart(
+  code: string,
+  adminToken: string | null,
+  roomUrl: string,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can start the call." }
+  space.callRoomUrl = roomUrl
+  space.callStartedAt = Date.now()
+  await persistSpace(space)
+  return { space }
+}
+
+export async function recordCallEnd(
+  code: string,
+  adminToken: string | null,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can end the call." }
+  space.callRoomUrl = null
+  space.callStartedAt = null
+  await persistSpace(space)
+  return { space }
+}
+
+export async function assertParticipantInSpace(
+  code: string,
+  participantId: string,
+): Promise<{ participant: Participant } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  const p = space.participants.find((x) => x.id === participantId && x.present)
+  if (!p) return { error: "You're not in this space" }
+  return { participant: p }
+}
+
+export async function peekSpace(
+  code: string,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
   return { space }
 }
 

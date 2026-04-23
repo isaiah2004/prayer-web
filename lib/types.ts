@@ -108,6 +108,9 @@ export type Space = {
   /** "open" (default): anyone joins instantly. "request": admin approves. */
   joinMode: JoinMode
   joinRequests: JoinRequest[]
+  /** If set, the admin has an active video call going. URL points to Daily. */
+  callRoomUrl: string | null
+  callStartedAt: number | null
 }
 
 export type SpacePublic = Omit<Space, "createdAt" | "adminToken">
