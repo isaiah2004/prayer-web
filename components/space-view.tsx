@@ -1,0 +1,282 @@
+"use client"
+
+import * as React from "react"
+import useSWR from "swr"
+import Link from "next/link"
+import {
+  ArrowLeft,
+  BookOpen,
+  Dices,
+  RefreshCcw,
+  Shuffle,
+  Sparkles,
+} from "lucide-react"
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { AddParticipant } from "@/components/add-participant"
+import { CopyCode } from "@/components/copy-code"
+import { ParticipantsList } from "@/components/participants-list"
+import { RandomizeReveal } from "@/components/randomize-reveal"
+import { PrayerRoulette } from "@/components/prayer-roulette"
+import { VerseView } from "@/components/verse-view"
+import type { SpacePublic } from "@/lib/types"
+import { randomizeAction, resetAction } from "@/app/actions"
+
+const MY_ID_KEY = (code: string) => `prayer-web:my-id:${code}`
+
+async function fetcher(url: string) {
+  const res = await fetch(url, { cache: "no-store" })
+  if (!res.ok) throw new Error("Failed to load space")
+  return (await res.json()) as SpacePublic
+}
+
+export function SpaceView({ initial }: { initial: SpacePublic }) {
+  const { data, mutate } = useSWR<SpacePublic>(
+    `/api/space/${initial.code}`,
+    fetcher,
+    {
+      fallbackData: initial,
+      refreshInterval: 3000,
+      revalidateOnFocus: true,
+    },
+  )
+
+  const space = data ?? initial
+  const [myId, setMyId] = React.useState<string | null>(null)
+  const [revealOpen, setRevealOpen] = React.useState(false)
+  const [rouletteOpen, setRouletteOpen] = React.useState(false)
+  const [verseOpen, setVerseOpen] = React.useState(false)
+  const [randomizing, setRandomizing] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem(MY_ID_KEY(space.code))
+      if (!stored) return
+      if (space.participants.some((p) => p.id === stored)) {
+        setMyId(stored)
+      } else if (space.participants.length > 0) {
+        // Participants loaded but our stored id isn't among them — they were
+        // removed. Clear so we don't falsely claim someone else's identity.
+        localStorage.removeItem(MY_ID_KEY(space.code))
+        setMyId(null)
+      }
+      // If participants are empty (initial load / refetch race), leave stored
+      // in place and let the next tick pick it up.
+    } catch {
+      /* ignore */
+    }
+  }, [space.code, space.participants])
+
+  function saveMyId(id: string) {
+    try {
+      localStorage.setItem(MY_ID_KEY(space.code), id)
+    } catch {
+      /* ignore */
+    }
+    setMyId(id)
+  }
+
+  async function onRandomize() {
+    setError(null)
+    setRandomizing(true)
+    try {
+      const result = await randomizeAction(space.code)
+      if (!result.ok) {
+        setError(result.error ?? "Couldn't randomize")
+        return
+      }
+      await mutate()
+      setRevealOpen(true)
+    } finally {
+      setRandomizing(false)
+    }
+  }
+
+  async function onReset() {
+    await resetAction(space.code)
+    await mutate()
+  }
+
+  const canRandomize = space.participants.length >= 2
+
+  return (
+    <main className="animated-gradient min-h-svh bg-gradient-to-br from-indigo-50 via-violet-50 to-pink-50 dark:from-indigo-950/40 dark:via-violet-950/40 dark:to-pink-950/40">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
+        <div className="flex items-center justify-between gap-4">
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/">
+              <ArrowLeft data-icon="inline-start" />
+              Home
+            </Link>
+          </Button>
+          <CopyCode code={space.code} className="flex-1 sm:max-w-sm" />
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-5">
+          <div className="flex flex-col gap-4 lg:col-span-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="text-primary size-4" />
+                    The prayer circle
+                  </CardTitle>
+                  <CardDescription>
+                    {space.participants.length}{" "}
+                    {space.participants.length === 1 ? "person" : "people"} so
+                    far
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {space.assignments ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setRevealOpen(true)}
+                      >
+                        <Sparkles data-icon="inline-start" />
+                        View pairs
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onReset}
+                        title="Clear current pairing"
+                      >
+                        <RefreshCcw data-icon="inline-start" />
+                        Reset
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ParticipantsList
+                  code={space.code}
+                  participants={space.participants}
+                  myId={myId}
+                  onChange={() => {
+                    void mutate()
+                  }}
+                />
+              </CardContent>
+            </Card>
+
+            <div className="flex flex-col items-center gap-3 py-2">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  size="lg"
+                  onClick={onRandomize}
+                  disabled={!canRandomize || randomizing}
+                  className="group relative h-14 min-w-56 bg-gradient-to-br from-indigo-600 via-violet-600 to-pink-600 text-base font-semibold text-white hover:from-indigo-500 hover:via-violet-500 hover:to-pink-500 disabled:opacity-60"
+                >
+                  <Shuffle data-icon="inline-start" />
+                  {randomizing
+                    ? "Shuffling…"
+                    : space.assignments
+                      ? "Randomize again"
+                      : "Randomize!"}
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => setRouletteOpen(true)}
+                  disabled={space.participants.length === 0}
+                  className="h-14 min-w-48 text-base"
+                  title="Pick a random person to lead prayer"
+                >
+                  <Dices data-icon="inline-start" />
+                  Prayer Roulette
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => setVerseOpen(true)}
+                  className="h-14 min-w-48 text-base"
+                  title="Open the shared verse view"
+                >
+                  <BookOpen data-icon="inline-start" />
+                  Verse View
+                  {space.verse ? (
+                    <span className="bg-primary/10 text-primary ml-2 rounded-full px-2 py-0.5 text-xs font-medium">
+                      {space.verse.reference}
+                    </span>
+                  ) : null}
+                </Button>
+              </div>
+              <p className="text-muted-foreground text-center text-xs">
+                {canRandomize
+                  ? "Randomize to pair everyone, spin the roulette to pick a leader, or open Verse View to share scripture."
+                  : "Add people to enable randomizing. Roulette needs 1+. Verse View works anytime."}
+              </p>
+              {error ? (
+                <p className="text-destructive text-sm">{error}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Add yourself</CardTitle>
+                <CardDescription>
+                  {myId
+                    ? "You're in — but feel free to add more names."
+                    : "Enter your name and the prayer request you'd like others to cover."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AddParticipant
+                  code={space.code}
+                  onAdded={(id) => {
+                    if (!myId) saveMyId(id)
+                    void mutate()
+                  }}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      <RandomizeReveal
+        open={revealOpen && !!space.assignments}
+        participants={space.participants}
+        assignments={space.assignments ?? []}
+        myId={myId}
+        onClose={() => setRevealOpen(false)}
+      />
+
+      <PrayerRoulette
+        open={rouletteOpen}
+        code={space.code}
+        participants={space.participants}
+        history={space.roulette?.history ?? []}
+        weights={space.roulette?.weights ?? {}}
+        onClose={() => setRouletteOpen(false)}
+        onChange={() => {
+          void mutate()
+        }}
+      />
+
+      <VerseView
+        open={verseOpen}
+        code={space.code}
+        spaceVerse={space.verse ?? null}
+        onClose={() => setVerseOpen(false)}
+        onChange={() => {
+          void mutate()
+        }}
+      />
+    </main>
+  )
+}

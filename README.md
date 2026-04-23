@@ -1,21 +1,32 @@
-# Next.js template
+# Prayer Web
 
-This is a Next.js template with shadcn/ui.
+A tiny, fun web app for small-group prayer:
 
-## Adding components
+- **Create a space**, share a 6-character code with your friends.
+- Everyone adds their name and a **prayer request** (rich-text, via [TipTap](https://tiptap.dev/)).
+- Hit **Randomize** to pair every person with someone to pray for (guaranteed no self-pairing).
+- Hit **Prayer Roulette** to pick one person at random — say, whoever's leading opening or closing prayer. Picked people's odds are halved each time so the same person doesn't keep coming up.
 
-To add components to your app, run the following command:
+Animations by [GSAP](https://gsap.com/). UI built with Next.js App Router, React 19, Tailwind v4, and shadcn/ui.
+
+## Run locally
 
 ```bash
-npx shadcn@latest add button
+pnpm install
+pnpm dev
 ```
 
-This will place the ui components in the `components` directory.
+Open http://localhost:3000.
 
-## Using components
+## Notes on storage
 
-To use the components in your app, import them as follows:
+Spaces are kept in an in-memory `Map` on the server with a 24-hour TTL. That is intentional: this app is designed for a single prayer-circle session. On Vercel with [Fluid Compute](https://vercel.com/docs/functions/runtimes/fluid-compute) the function instance is reused across concurrent requests, so in practice a group can use the same space together for a while. If you want strong durability across deploys, swap `lib/store.ts` for a Redis / Postgres backend.
 
-```tsx
-import { Button } from "@/components/ui/button";
+## Deploy
+
+This repo is deployed on Vercel straight from `main`. To deploy your own fork:
+
+```bash
+npm i -g vercel
+vercel
 ```

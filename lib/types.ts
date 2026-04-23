@@ -1,0 +1,61 @@
+export type Participant = {
+  id: string
+  name: string
+  request: string
+  createdAt: number
+}
+
+export type Assignment = {
+  prayerId: string
+  prayerName: string
+  requestId: string
+  requestName: string
+  request: string
+}
+
+export type RoulettePick = {
+  participantId: string
+  participantName: string
+  request: string
+  pickedAt: number
+}
+
+export type RouletteState = {
+  weights: Record<string, number>
+  history: RoulettePick[]
+}
+
+export type PanelKind =
+  | { kind: "translation"; translationId: string }
+  | { kind: "commentary"; commentaryId: string }
+  | { kind: "original" }
+
+export type ViewLayout = {
+  id: string
+  name: string
+  panels: PanelKind[]
+}
+
+export type VerseSelection = {
+  reference: string
+  book: string
+  chapter: number
+  verseStart: number
+  verseEnd?: number
+  translationId: string
+  commentaryId: string
+  layout: ViewLayout
+  updatedAt: number
+}
+
+export type Space = {
+  code: string
+  createdAt: number
+  participants: Participant[]
+  assignments: Assignment[] | null
+  randomizedAt: number | null
+  roulette: RouletteState
+  verse: VerseSelection | null
+}
+
+export type SpacePublic = Omit<Space, "createdAt">
