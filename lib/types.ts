@@ -74,6 +74,15 @@ export type PresenterRequest = {
   latestRequestedAt: number
 }
 
+export type JoinMode = "open" | "request"
+
+export type JoinRequest = {
+  id: string
+  name: string
+  request: string
+  requestedAt: number
+}
+
 export type Space = {
   code: string
   createdAt: number
@@ -96,6 +105,9 @@ export type Space = {
   spinRequests: SpinRequest[]
   /** Queue of people asking for presenter access, oldest-first. */
   presenterRequests: PresenterRequest[]
+  /** "open" (default): anyone joins instantly. "request": admin approves. */
+  joinMode: JoinMode
+  joinRequests: JoinRequest[]
 }
 
 export type SpacePublic = Omit<Space, "createdAt" | "adminToken">

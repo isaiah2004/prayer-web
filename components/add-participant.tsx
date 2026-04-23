@@ -14,17 +14,22 @@ import {
 
 const LAST_NAME_KEY = "prayer-web:last-name"
 const MY_ID_KEY = (code: string) => `prayer-web:my-id:${code}`
+const MY_JOIN_KEY = (code: string) => `prayer-web:my-join:${code}`
 
 type Mode = "self" | "other"
 
 export function AddParticipant({
   code,
   mode = "self",
+  adminToken = null,
   onAdded,
+  onQueued,
 }: {
   code: string
   mode?: Mode
+  adminToken?: string | null
   onAdded?: (participantId: string) => void
+  onQueued?: (joinRequestId: string) => void
 }) {
   const [name, setName] = React.useState("")
   const [request, setRequest] = React.useState("")
@@ -47,29 +52,44 @@ export function AddParticipant({
     setError(null)
     setPending(true)
     try {
-      const action =
-        mode === "self" ? addParticipantAction : addOtherParticipantAction
-      const result = await action(code, name, request)
-      if (!result.ok) {
-        setError(result.error ?? "Something went wrong")
-        return
-      }
       if (mode === "self") {
+        const result = await addParticipantAction(
+          code,
+          name,
+          request,
+          adminToken,
+        )
+        if (!result.ok) {
+          setError(result.error ?? "Something went wrong")
+          return
+        }
         try {
           localStorage.setItem(LAST_NAME_KEY, name)
-          // Also write my-id here so the key is guaranteed to be persisted
-          // even if the parent onAdded is lost to a fast re-render.
           if (result.participantId) {
             localStorage.setItem(MY_ID_KEY(code), result.participantId)
+          }
+          if (result.joinRequestId) {
+            localStorage.setItem(MY_JOIN_KEY(code), result.joinRequestId)
           }
         } catch {
           /* ignore */
         }
+        setName(name)
+        setRequest("")
+        setIsReset((n) => n + 1)
+        if (result.participantId) onAdded?.(result.participantId)
+        if (result.joinRequestId) onQueued?.(result.joinRequestId)
+      } else {
+        const result = await addOtherParticipantAction(code, name, request)
+        if (!result.ok) {
+          setError(result.error ?? "Something went wrong")
+          return
+        }
+        setName("")
+        setRequest("")
+        setIsReset((n) => n + 1)
+        if (result.participantId) onAdded?.(result.participantId)
       }
-      setName(mode === "self" ? name : "")
-      setRequest("")
-      setIsReset((n) => n + 1)
-      if (result.participantId) onAdded?.(result.participantId)
     } finally {
       setPending(false)
     }

@@ -18,9 +18,13 @@ import {
   denySpinRequest as denySpinRequestStore,
   requestPresenter as requestPresenterStore,
   denyPresenterRequest as denyPresenterRequestStore,
+  setJoinMode as setJoinModeStore,
+  approveJoinRequest as approveJoinRequestStore,
+  denyJoinRequest as denyJoinRequestStore,
   getSpace,
 } from "@/lib/store"
 import type {
+  JoinMode,
   PendingKind,
   RoulettePick,
   Space,
@@ -61,12 +65,22 @@ export async function addParticipantAction(
   code: string,
   name: string,
   request: string,
-): Promise<{ ok: boolean; error?: string; participantId?: string }> {
+  adminToken: string | null = null,
+): Promise<{
+  ok: boolean
+  error?: string
+  participantId?: string
+  joinRequestId?: string
+}> {
   const result = await addParticipantStore(code, name, request, {
     present: true,
+    adminToken,
   })
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
+  if ("joinRequest" in result) {
+    return { ok: true, joinRequestId: result.joinRequest.id }
+  }
   return { ok: true, participantId: result.participant.id }
 }
 
@@ -80,7 +94,11 @@ export async function addOtherParticipantAction(
   })
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
-  return { ok: true, participantId: result.participant.id }
+  if ("participant" in result) {
+    return { ok: true, participantId: result.participant.id }
+  }
+  // Not-present people can't be queued; this branch is unreachable.
+  return { ok: true }
 }
 
 export async function removeParticipantAction(
@@ -270,6 +288,39 @@ export async function denyPresenterRequestAction(
     participantId,
     adminToken,
   )
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function setJoinModeAction(
+  code: string,
+  adminToken: string | null,
+  mode: JoinMode,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await setJoinModeStore(code, adminToken, mode)
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function approveJoinRequestAction(
+  code: string,
+  adminToken: string | null,
+  requestId: string,
+): Promise<{ ok: boolean; error?: string; participantId?: string }> {
+  const result = await approveJoinRequestStore(code, adminToken, requestId)
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true, participantId: result.participant.id }
+}
+
+export async function denyJoinRequestAction(
+  code: string,
+  adminToken: string | null,
+  requestId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await denyJoinRequestStore(code, adminToken, requestId)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }

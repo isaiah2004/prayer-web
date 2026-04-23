@@ -29,6 +29,7 @@ import { VerseView } from "@/components/verse-view"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { AdminRequestsBanner } from "@/components/admin-requests-banner"
 import type { RoulettePick, SpacePublic } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import {
   randomizeAction,
   resetAction,
@@ -38,6 +39,9 @@ import {
   grantVersePresenterAction,
   reclaimVersePresenterAction,
   denyPresenterRequestAction,
+  setJoinModeAction,
+  approveJoinRequestAction,
+  denyJoinRequestAction,
 } from "@/app/actions"
 
 const MY_ID_KEY = (code: string) => `prayer-web:my-id:${code}`
@@ -63,6 +67,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
 
   const space = data ?? initial
   const [myId, setMyId] = React.useState<string | null>(null)
+  const [myJoinId, setMyJoinId] = React.useState<string | null>(null)
   const [adminToken, setAdminToken] = React.useState<string | null>(null)
   const [revealOpen, setRevealOpen] = React.useState(false)
   const [rouletteOpen, setRouletteOpen] = React.useState(false)
@@ -70,6 +75,44 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
   const [randomizing, setRandomizing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const isAdmin = !!adminToken
+
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem(
+        `prayer-web:my-join:${space.code}`,
+      )
+      setMyJoinId(stored)
+    } catch {
+      /* ignore */
+    }
+  }, [space.code])
+
+  // If my queued join was approved, my myId ref will cover it; clear the
+  // my-join flag once we're actually in.
+  React.useEffect(() => {
+    if (myId && myJoinId) {
+      try {
+        localStorage.removeItem(`prayer-web:my-join:${space.code}`)
+      } catch {
+        /* ignore */
+      }
+      setMyJoinId(null)
+    }
+  }, [myId, myJoinId, space.code])
+
+  // If my queued request was denied (no longer in the server list), clear.
+  React.useEffect(() => {
+    if (!myJoinId) return
+    const stillQueued = space.joinRequests?.some((r) => r.id === myJoinId)
+    if (!stillQueued) {
+      try {
+        localStorage.removeItem(`prayer-web:my-join:${space.code}`)
+      } catch {
+        /* ignore */
+      }
+      setMyJoinId(null)
+    }
+  }, [space.joinRequests, myJoinId, space.code])
 
   React.useEffect(() => {
     try {
@@ -230,6 +273,29 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
     await mutate()
   }
 
+  async function onToggleJoinMode() {
+    if (!isAdmin) return
+    const next = space.joinMode === "request" ? "open" : "request"
+    await setJoinModeAction(space.code, adminToken, next)
+    await mutate()
+  }
+
+  async function onApproveJoin(requestId: string) {
+    if (!isAdmin) return
+    const result = await approveJoinRequestAction(
+      space.code,
+      adminToken,
+      requestId,
+    )
+    if (result.ok) await mutate()
+  }
+
+  async function onDenyJoin(requestId: string) {
+    if (!isAdmin) return
+    await denyJoinRequestAction(space.code, adminToken, requestId)
+    await mutate()
+  }
+
   const presentCount = space.participants.filter((p) => p.present).length
   const canRandomize = space.participants.length >= 2 && presentCount >= 1
   const canRoulette = presentCount >= 1
@@ -245,6 +311,25 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
             </Link>
           </Button>
           <div className="flex flex-1 items-center justify-end gap-2 sm:max-w-sm">
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={onToggleJoinMode}
+                className={cn(
+                  "rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+                  space.joinMode === "request"
+                    ? "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                    : "border-border bg-muted text-muted-foreground",
+                )}
+                title={
+                  space.joinMode === "request"
+                    ? "Request mode: you approve new joiners. Click to switch to open."
+                    : "Open mode: anyone with the code can join. Click to switch to request mode."
+                }
+              >
+                {space.joinMode === "request" ? "Request mode" : "Open mode"}
+              </button>
+            ) : null}
             {isAdmin ? (
               <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs font-medium">
                 admin
@@ -268,6 +353,40 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
             {space.spinRequests.length === 1
               ? `A ${space.spinRequests[0].kind === "pair" ? "prayer-pair" : "roulette"} request is waiting for the admin to approve.`
               : `${space.spinRequests.length} spin requests are waiting for the admin.`}
+          </div>
+        ) : null}
+
+        {isAdmin && space.joinRequests.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {[...space.joinRequests]
+              .sort((a, b) => a.requestedAt - b.requestedAt)
+              .map((req) => (
+                <div
+                  key={req.id}
+                  className="border-amber-500/40 bg-amber-500/10 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 shadow-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">
+                      {req.name} wants to join
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      Approve to add them to the circle with their request.
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" onClick={() => onApproveJoin(req.id)}>
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onDenyJoin(req.id)}
+                    >
+                      Deny
+                    </Button>
+                  </div>
+                </div>
+              ))}
           </div>
         ) : null}
 
@@ -401,21 +520,37 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                   </CardDescription>
                 </CardHeader>
               </Card>
+            ) : myJoinId ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Waiting for the admin…</CardTitle>
+                  <CardDescription>
+                    Your join request was sent. The admin will approve you
+                    shortly. This page updates automatically.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
             ) : (
               <Card>
                 <CardHeader>
                   <CardTitle>Add yourself</CardTitle>
                   <CardDescription>
-                    Enter your name and the prayer request you&apos;d like
-                    others to cover.
+                    {space.joinMode === "request"
+                      ? "The admin is gating new joins. Enter your info and they'll approve you."
+                      : "Enter your name and the prayer request you'd like others to cover."}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <AddParticipant
                     code={space.code}
                     mode="self"
+                    adminToken={adminToken}
                     onAdded={(id) => {
                       saveMyId(id)
+                      void mutate()
+                    }}
+                    onQueued={(id) => {
+                      setMyJoinId(id)
                       void mutate()
                     }}
                   />

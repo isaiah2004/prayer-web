@@ -23,5 +23,7 @@ export async function GET(
     versePresenterId: space.versePresenterId,
     spinRequests: space.spinRequests,
     presenterRequests: space.presenterRequests,
+    joinMode: space.joinMode,
+    joinRequests: space.joinRequests,
   })
 }

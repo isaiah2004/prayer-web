@@ -1,6 +1,8 @@
 import { customAlphabet } from "nanoid"
 import { get, put, del } from "@vercel/blob"
 import type {
+  JoinMode,
+  JoinRequest,
   Participant,
   PendingKind,
   PresenterRequest,
@@ -58,6 +60,8 @@ function migrateSpace(space: Space): Space {
   if (space.versePresenterId === undefined) space.versePresenterId = null
   if (!Array.isArray(space.spinRequests)) space.spinRequests = []
   if (!Array.isArray(space.presenterRequests)) space.presenterRequests = []
+  if (space.joinMode !== "request") space.joinMode = "open"
+  if (!Array.isArray(space.joinRequests)) space.joinRequests = []
   return space
 }
 
@@ -140,6 +144,8 @@ export async function createSpace(): Promise<Space> {
     versePresenterId: null,
     spinRequests: [],
     presenterRequests: [],
+    joinMode: "open",
+    joinRequests: [],
   }
   await persistSpace(space)
   return space
@@ -153,13 +159,16 @@ export async function addParticipant(
   code: string,
   name: string,
   request: string,
-  options: { present?: boolean } = {},
+  options: { present?: boolean; adminToken?: string | null } = {},
 ): Promise<
-  { space: Space; participant: Participant } | { error: string }
+  | { space: Space; participant: Participant }
+  | { space: Space; joinRequest: JoinRequest }
+  | { error: string }
 > {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
   const present = options.present ?? true
+  const adminBypass = isAdmin(space, options.adminToken ?? null)
   const cleanName = name.trim()
   if (!cleanName) return { error: "Name is required" }
   if (cleanName.length > 60) return { error: "Name is too long" }
@@ -167,6 +176,21 @@ export async function addParticipant(
   const cleanRequest = sanitizeRequestHtml(request)
   const textOnly = cleanRequest.replace(/<[^>]*>/g, "").trim()
   if (!textOnly) return { error: "Prayer request is required" }
+
+  // Gate self-adds on join mode. Not-present additions are always direct —
+  // those people aren't joining the room, they're being prayed for. Admin
+  // bypass lets the admin add themselves directly in request mode too.
+  if (present && space.joinMode === "request" && !adminBypass) {
+    const joinRequest: JoinRequest = {
+      id: nanoId(),
+      name: cleanName,
+      request: cleanRequest,
+      requestedAt: Date.now(),
+    }
+    space.joinRequests.push(joinRequest)
+    await persistSpace(space)
+    return { space, joinRequest }
+  }
 
   const participant: Participant = {
     id: nanoId(),
@@ -183,6 +207,68 @@ export async function addParticipant(
   space.randomizedAt = null
   await persistSpace(space)
   return { space, participant }
+}
+
+export async function setJoinMode(
+  code: string,
+  adminToken: string | null,
+  mode: JoinMode,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can change join mode." }
+  space.joinMode = mode
+  if (mode === "open") {
+    // Don't silently drop queued requests; they remain so admin can still
+    // approve them. But in open mode, the client-side "Add yourself" UI
+    // would just short-circuit to direct add.
+  }
+  await persistSpace(space)
+  return { space }
+}
+
+export async function approveJoinRequest(
+  code: string,
+  adminToken: string | null,
+  requestId: string,
+): Promise<
+  { space: Space; participant: Participant } | { error: string }
+> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can approve joins." }
+  const req = space.joinRequests.find((r) => r.id === requestId)
+  if (!req) return { error: "Join request not found" }
+  const participant: Participant = {
+    id: nanoId(),
+    name: req.name,
+    request: req.request,
+    createdAt: Date.now(),
+    present: true,
+  }
+  space.participants.push(participant)
+  space.roulette.weights[participant.id] = 1
+  space.joinRequests = space.joinRequests.filter((r) => r.id !== requestId)
+  space.assignments = null
+  space.randomizedAt = null
+  await persistSpace(space)
+  return { space, participant }
+}
+
+export async function denyJoinRequest(
+  code: string,
+  adminToken: string | null,
+  requestId: string,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can deny joins." }
+  space.joinRequests = space.joinRequests.filter((r) => r.id !== requestId)
+  await persistSpace(space)
+  return { space }
 }
 
 export async function removeParticipant(

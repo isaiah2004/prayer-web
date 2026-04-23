@@ -27,6 +27,8 @@ export default async function SpacePage({
         versePresenterId: space.versePresenterId,
         spinRequests: space.spinRequests,
         presenterRequests: space.presenterRequests,
+        joinMode: space.joinMode,
+        joinRequests: space.joinRequests,
       }}
     />
   )
