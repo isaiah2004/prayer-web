@@ -13,6 +13,7 @@ import {
 } from "@/app/actions"
 
 const LAST_NAME_KEY = "prayer-web:last-name"
+const MY_ID_KEY = (code: string) => `prayer-web:my-id:${code}`
 
 type Mode = "self" | "other"
 
@@ -56,6 +57,11 @@ export function AddParticipant({
       if (mode === "self") {
         try {
           localStorage.setItem(LAST_NAME_KEY, name)
+          // Also write my-id here so the key is guaranteed to be persisted
+          // even if the parent onAdded is lost to a fast re-render.
+          if (result.participantId) {
+            localStorage.setItem(MY_ID_KEY(code), result.participantId)
+          }
         } catch {
           /* ignore */
         }
