@@ -210,6 +210,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                   onChange={() => {
                     void mutate()
                   }}
+                  onClaim={(id) => saveMyId(id)}
                 />
               </CardContent>
             </Card>
