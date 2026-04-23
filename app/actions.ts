@@ -12,9 +12,16 @@ import {
   resetRoulette as resetRouletteStore,
   setVerse as setVerseStore,
   clearVerse as clearVerseStore,
+  grantVersePresenter as grantVersePresenterStore,
+  reclaimVersePresenter as reclaimVersePresenterStore,
+  requestSpin as requestSpinStore,
+  denySpinRequest as denySpinRequestStore,
+  requestPresenter as requestPresenterStore,
+  denyPresenterRequest as denyPresenterRequestStore,
   getSpace,
 } from "@/lib/store"
 import type {
+  PendingKind,
   RoulettePick,
   Space,
   SpacePublic,
@@ -24,14 +31,18 @@ import { parseReference } from "@/lib/bible/books"
 
 function toPublic(space: Space | null): SpacePublic | null {
   if (!space) return null
-  const { createdAt: _ignored, ...rest } = space
-  void _ignored
+  const { createdAt: _c, adminToken: _a, ...rest } = space
+  void _c
+  void _a
   return rest
 }
 
-export async function createSpaceAction() {
+export async function createSpaceAction(): Promise<{
+  code: string
+  adminToken: string
+}> {
   const space = await createSpace()
-  redirect(`/space/${space.code}`)
+  return { code: space.code, adminToken: space.adminToken }
 }
 
 export async function joinSpaceAction(
@@ -84,8 +95,9 @@ export async function removeParticipantAction(
 
 export async function randomizeAction(
   code: string,
+  adminToken: string | null,
 ): Promise<{ ok: boolean; error?: string; space?: SpacePublic }> {
-  const result = await randomizeStore(code)
+  const result = await randomizeStore(code, adminToken)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true, space: toPublic(result.space)! }
@@ -93,8 +105,9 @@ export async function randomizeAction(
 
 export async function resetAction(
   code: string,
+  adminToken: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
-  const result = await resetStore(code)
+  const result = await resetStore(code, adminToken)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }
@@ -102,8 +115,9 @@ export async function resetAction(
 
 export async function spinRouletteAction(
   code: string,
+  adminToken: string | null,
 ): Promise<{ ok: boolean; error?: string; pick?: RoulettePick }> {
-  const result = await spinRouletteStore(code)
+  const result = await spinRouletteStore(code, adminToken)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true, pick: result.pick }
@@ -111,8 +125,9 @@ export async function spinRouletteAction(
 
 export async function resetRouletteAction(
   code: string,
+  adminToken: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
-  const result = await resetRouletteStore(code)
+  const result = await resetRouletteStore(code, adminToken)
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }
@@ -125,6 +140,8 @@ export async function setVerseAction(
     translationId: string
     commentaryId: string
     layout: VerseSelection["layout"]
+    adminToken: string | null
+    callerId: string | null
   },
 ): Promise<{ ok: boolean; error?: string; verse?: VerseSelection }> {
   const parsed = parseReference(input.reference)
@@ -133,16 +150,20 @@ export async function setVerseAction(
       ok: false,
       error: 'Could not parse reference. Try "John 3:16" or "Psalm 23".',
     }
-  const result = await setVerseStore(code, {
-    reference: parsed.canonical,
-    book: parsed.book.usfm,
-    chapter: parsed.chapter,
-    verseStart: parsed.verseStart,
-    verseEnd: parsed.verseEnd,
-    translationId: input.translationId,
-    commentaryId: input.commentaryId,
-    layout: input.layout,
-  })
+  const result = await setVerseStore(
+    code,
+    {
+      reference: parsed.canonical,
+      book: parsed.book.usfm,
+      chapter: parsed.chapter,
+      verseStart: parsed.verseStart,
+      verseEnd: parsed.verseEnd,
+      translationId: input.translationId,
+      commentaryId: input.commentaryId,
+      layout: input.layout,
+    },
+    { adminToken: input.adminToken, callerId: input.callerId },
+  )
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true, verse: result.space.verse! }
@@ -150,8 +171,105 @@ export async function setVerseAction(
 
 export async function clearVerseAction(
   code: string,
+  caller: { adminToken: string | null; callerId: string | null },
 ): Promise<{ ok: boolean; error?: string }> {
-  const result = await clearVerseStore(code)
+  const result = await clearVerseStore(code, caller)
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function grantVersePresenterAction(
+  code: string,
+  adminToken: string | null,
+  participantId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await grantVersePresenterStore(code, adminToken, participantId)
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function reclaimVersePresenterAction(
+  code: string,
+  adminToken: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await reclaimVersePresenterStore(code, adminToken)
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function requestSpinAction(
+  code: string,
+  kind: PendingKind,
+  participantId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!participantId) {
+    return {
+      ok: false,
+      error: "You need to add yourself to the space first.",
+    }
+  }
+  const result = await requestSpinStore(code, kind, participantId)
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function approveSpinRequestAction(
+  code: string,
+  kind: PendingKind,
+  adminToken: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  if (kind === "pair") {
+    const result = await randomizeStore(code, adminToken)
+    if ("error" in result) return { ok: false, error: result.error }
+  } else {
+    const result = await spinRouletteStore(code, adminToken)
+    if ("error" in result) return { ok: false, error: result.error }
+  }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function denySpinRequestAction(
+  code: string,
+  kind: PendingKind,
+  adminToken: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await denySpinRequestStore(code, kind, adminToken)
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function requestPresenterAction(
+  code: string,
+  participantId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!participantId) {
+    return {
+      ok: false,
+      error: "You need to add yourself to the space first.",
+    }
+  }
+  const result = await requestPresenterStore(code, participantId)
+  if ("error" in result) return { ok: false, error: result.error }
+  revalidatePath(`/space/${code}`)
+  return { ok: true }
+}
+
+export async function denyPresenterRequestAction(
+  code: string,
+  participantId: string,
+  adminToken: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await denyPresenterRequestStore(
+    code,
+    participantId,
+    adminToken,
+  )
   if ("error" in result) return { ok: false, error: result.error }
   revalidatePath(`/space/${code}`)
   return { ok: true }

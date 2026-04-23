@@ -2,8 +2,11 @@ import { customAlphabet } from "nanoid"
 import { get, put, del } from "@vercel/blob"
 import type {
   Participant,
+  PendingKind,
+  PresenterRequest,
   RoulettePick,
   Space,
+  SpinRequest,
   VerseSelection,
 } from "./types"
 import { sanitizeRequestHtml } from "./sanitize"
@@ -23,6 +26,14 @@ if (!globalForStore.__prayerSpaces) {
 
 const nanoCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6)
 const nanoId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 10)
+const nanoSecret = customAlphabet(
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+  32,
+)
+
+function isAdmin(space: Space, token: string | null | undefined): boolean {
+  return !!token && token === space.adminToken
+}
 
 const USE_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN
 
@@ -38,6 +49,15 @@ function migrateSpace(space: Space): Space {
       (p as Participant).present = true
     }
   }
+  if (typeof space.adminToken !== "string" || !space.adminToken) {
+    // Old spaces: grant admin to whoever opens it next. In practice these
+    // spaces are ephemeral (24h TTL) so migration is rare.
+    space.adminToken = nanoSecret()
+  }
+  if (space.prayerOrder === undefined) space.prayerOrder = null
+  if (space.versePresenterId === undefined) space.versePresenterId = null
+  if (!Array.isArray(space.spinRequests)) space.spinRequests = []
+  if (!Array.isArray(space.presenterRequests)) space.presenterRequests = []
   return space
 }
 
@@ -110,11 +130,16 @@ export async function createSpace(): Promise<Space> {
   const space: Space = {
     code,
     createdAt: Date.now(),
+    adminToken: nanoSecret(),
     participants: [],
     assignments: null,
     randomizedAt: null,
+    prayerOrder: null,
     roulette: { weights: {}, history: [] },
     verse: null,
+    versePresenterId: null,
+    spinRequests: [],
+    presenterRequests: [],
   }
   await persistSpace(space)
   return space
@@ -174,8 +199,19 @@ export async function removeParticipant(
   space.roulette.history = space.roulette.history.filter(
     (p) => p.participantId !== participantId,
   )
+  space.presenterRequests = space.presenterRequests.filter(
+    (r) => r.participantId !== participantId,
+  )
+  if (space.versePresenterId === participantId) {
+    space.versePresenterId = null
+  }
+  // Drop the removed id from any spin-request audit lists too.
+  for (const r of space.spinRequests) {
+    r.requesterIds = r.requesterIds.filter((id) => id !== participantId)
+  }
   space.assignments = null
   space.randomizedAt = null
+  space.prayerOrder = null
   await persistSpace(space)
   return { space }
 }
@@ -302,9 +338,12 @@ function buildAssignments(
 
 export async function randomize(
   code: string,
+  adminToken: string | null = null,
 ): Promise<{ space: Space } | { error: string }> {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can generate prayer pairs." }
 
   const requests = space.participants
   const prayers = space.participants.filter((p) => p.present)
@@ -324,18 +363,27 @@ export async function randomize(
     requestName: request.name,
     request: request.request,
   }))
+  // Generate a speaking order for present participants (shuffled).
+  const orderIds = prayers.map((p) => p.id)
+  shuffleInPlace(orderIds)
+  space.prayerOrder = orderIds
   space.randomizedAt = Date.now()
+  space.spinRequests = space.spinRequests.filter((r) => r.kind !== "pair")
   await persistSpace(space)
   return { space }
 }
 
 export async function resetAssignments(
   code: string,
+  adminToken: string | null = null,
 ): Promise<{ space: Space } | { error: string }> {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can reset." }
   space.assignments = null
   space.randomizedAt = null
+  space.prayerOrder = null
   await persistSpace(space)
   return { space }
 }
@@ -344,9 +392,12 @@ const MIN_WEIGHT = 1 / 1024
 
 export async function spinRoulette(
   code: string,
+  adminToken: string | null = null,
 ): Promise<{ space: Space; pick: RoulettePick } | { error: string }> {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can spin the roulette." }
 
   const present = space.participants.filter((p) => p.present)
   if (present.length === 0)
@@ -393,15 +444,19 @@ export async function spinRoulette(
     pickedAt: Date.now(),
   }
   space.roulette.history = [pick, ...space.roulette.history].slice(0, 30)
+  space.spinRequests = space.spinRequests.filter((r) => r.kind !== "roulette")
   await persistSpace(space)
   return { space, pick }
 }
 
 export async function resetRoulette(
   code: string,
+  adminToken: string | null = null,
 ): Promise<{ space: Space } | { error: string }> {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can reset the roulette." }
   space.roulette = {
     weights: Object.fromEntries(
       space.participants.filter((p) => p.present).map((p) => [p.id, 1]),
@@ -415,9 +470,18 @@ export async function resetRoulette(
 export async function setVerse(
   code: string,
   verse: Omit<VerseSelection, "updatedAt">,
+  caller: { adminToken: string | null; callerId: string | null },
 ): Promise<{ space: Space } | { error: string }> {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
+  const callerIsAdmin = isAdmin(space, caller.adminToken)
+  const callerIsPresenter =
+    !!caller.callerId && caller.callerId === space.versePresenterId
+  if (!callerIsAdmin && !callerIsPresenter) {
+    return {
+      error: "Only the admin or the current presenter can set the verse.",
+    }
+  }
   space.verse = { ...verse, updatedAt: Date.now() }
   await persistSpace(space)
   return { space }
@@ -425,10 +489,166 @@ export async function setVerse(
 
 export async function clearVerse(
   code: string,
+  caller: { adminToken: string | null; callerId: string | null },
 ): Promise<{ space: Space } | { error: string }> {
   const space = await loadSpace(code)
   if (!space) return { error: "Space not found" }
+  const callerIsAdmin = isAdmin(space, caller.adminToken)
+  const callerIsPresenter =
+    !!caller.callerId && caller.callerId === space.versePresenterId
+  if (!callerIsAdmin && !callerIsPresenter) {
+    return {
+      error: "Only the admin or the current presenter can clear the verse.",
+    }
+  }
   space.verse = null
+  await persistSpace(space)
+  return { space }
+}
+
+export async function grantVersePresenter(
+  code: string,
+  adminToken: string | null,
+  participantId: string,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can grant verse access." }
+  const result = await grantVersePresenterInternal(space, participantId)
+  if (result && "error" in result) return { error: result.error }
+  await persistSpace(space)
+  return { space }
+}
+
+export async function reclaimVersePresenter(
+  code: string,
+  adminToken: string | null,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can reclaim verse access." }
+  space.versePresenterId = null
+  await persistSpace(space)
+  return { space }
+}
+
+const PRESENTER_REQUEST_COOLDOWN_MS = 30_000
+
+export async function requestSpin(
+  code: string,
+  kind: PendingKind,
+  participantId: string | null,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  let requesterName = "Someone"
+  if (participantId) {
+    const p = space.participants.find((x) => x.id === participantId)
+    if (p) requesterName = p.name
+  }
+  const existing = space.spinRequests.find((r) => r.kind === kind)
+  if (existing) {
+    // Spam-proof: first request wins (oldest on top). Track additional
+    // requesters without moving the entry or bothering the admin twice.
+    if (
+      participantId &&
+      !existing.requesterIds.includes(participantId)
+    ) {
+      existing.requesterIds.push(participantId)
+    }
+  } else {
+    space.spinRequests.push({
+      kind,
+      firstRequestedAt: Date.now(),
+      firstRequesterName: requesterName,
+      requesterIds: participantId ? [participantId] : [],
+    })
+  }
+  await persistSpace(space)
+  return { space }
+}
+
+function clearSpinRequest(space: Space, kind: PendingKind) {
+  space.spinRequests = space.spinRequests.filter((r) => r.kind !== kind)
+}
+
+export async function denySpinRequest(
+  code: string,
+  kind: PendingKind,
+  adminToken: string | null,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can deny requests." }
+  clearSpinRequest(space, kind)
+  await persistSpace(space)
+  return { space }
+}
+
+export async function requestPresenter(
+  code: string,
+  participantId: string,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  const who = space.participants.find((p) => p.id === participantId)
+  if (!who) return { error: "You are not in the space." }
+  if (!who.present) return { error: "Not-present people can't request." }
+  const now = Date.now()
+  const existing = space.presenterRequests.find(
+    (r) => r.participantId === participantId,
+  )
+  if (existing) {
+    // Spam-proof: within the 30s cooldown we don't even bump
+    // latestRequestedAt so nothing about the row changes visually. After
+    // the cooldown, update the "latest" marker but never firstRequestedAt
+    // — the oldest request stays on top.
+    if (now - existing.latestRequestedAt > PRESENTER_REQUEST_COOLDOWN_MS) {
+      existing.latestRequestedAt = now
+    }
+  } else {
+    space.presenterRequests.push({
+      participantId,
+      firstRequestedAt: now,
+      latestRequestedAt: now,
+    })
+    space.presenterRequests.sort(
+      (a, b) => a.firstRequestedAt - b.firstRequestedAt,
+    )
+  }
+  await persistSpace(space)
+  return { space }
+}
+
+export async function grantVersePresenterInternal(
+  space: Space,
+  participantId: string,
+) {
+  const target = space.participants.find((p) => p.id === participantId)
+  if (!target) return { error: "Participant not found" }
+  if (!target.present) return { error: "Not-present people can't present." }
+  space.versePresenterId = participantId
+  space.presenterRequests = space.presenterRequests.filter(
+    (r) => r.participantId !== participantId,
+  )
+  return null
+}
+
+export async function denyPresenterRequest(
+  code: string,
+  participantId: string,
+  adminToken: string | null,
+): Promise<{ space: Space } | { error: string }> {
+  const space = await loadSpace(code)
+  if (!space) return { error: "Space not found" }
+  if (!isAdmin(space, adminToken))
+    return { error: "Only the admin can deny requests." }
+  space.presenterRequests = space.presenterRequests.filter(
+    (r) => r.participantId !== participantId,
+  )
   await persistSpace(space)
   return { space }
 }

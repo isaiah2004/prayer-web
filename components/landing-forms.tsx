@@ -2,12 +2,15 @@
 
 import * as React from "react"
 import { useFormStatus } from "react-dom"
+import { useRouter } from "next/navigation"
 import { ArrowRight, Plus, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createSpaceAction, joinSpaceAction } from "@/app/actions"
+
+const ADMIN_KEY = (code: string) => `prayer-web:admin-token:${code}`
 
 function clearSpaceLocalState() {
   if (typeof window === "undefined") return
@@ -24,27 +27,39 @@ function clearSpaceLocalState() {
 }
 
 export function CreateSpaceForm() {
+  const router = useRouter()
+  const [pending, setPending] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  async function onCreate() {
+    setError(null)
+    setPending(true)
+    try {
+      clearSpaceLocalState()
+      const result = await createSpaceAction()
+      try {
+        localStorage.setItem(ADMIN_KEY(result.code), result.adminToken)
+      } catch {
+        /* ignore */
+      }
+      router.push(`/space/${result.code}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create space")
+      setPending(false)
+    }
+  }
+
   return (
-    <form
-      action={createSpaceAction}
-      onSubmit={clearSpaceLocalState}
-      className="flex flex-col gap-3"
-    >
+    <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">
         Start a new space and invite your friends with the code.
       </p>
-      <CreateSubmit />
-    </form>
-  )
-}
-
-function CreateSubmit() {
-  const { pending } = useFormStatus()
-  return (
-    <Button size="lg" type="submit" disabled={pending}>
-      <Plus data-icon="inline-start" />
-      {pending ? "Creating…" : "Create a new space"}
-    </Button>
+      <Button size="lg" onClick={onCreate} disabled={pending}>
+        <Plus data-icon="inline-start" />
+        {pending ? "Creating…" : "Create a new space"}
+      </Button>
+      {error ? <p className="text-destructive text-sm">{error}</p> : null}
+    </div>
   )
 }
 

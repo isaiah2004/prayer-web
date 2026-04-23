@@ -7,7 +7,11 @@ import { Dices, RotateCcw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Participant, RoulettePick } from "@/lib/types"
-import { spinRouletteAction, resetRouletteAction } from "@/app/actions"
+import {
+  spinRouletteAction,
+  resetRouletteAction,
+  requestSpinAction,
+} from "@/app/actions"
 
 type Props = {
   open: boolean
@@ -22,6 +26,8 @@ type Props = {
    * the reveal completes.
    */
   pendingPick?: RoulettePick | null
+  myId: string | null
+  adminToken: string | null
   onPickShown?: (pickedAt: number) => void
   onClose: () => void
   onChange?: () => void
@@ -34,10 +40,13 @@ export function PrayerRoulette({
   history,
   weights,
   pendingPick,
+  myId,
+  adminToken,
   onPickShown,
   onClose,
   onChange,
 }: Props) {
+  const isAdmin = !!adminToken
   const overlayRef = React.useRef<HTMLDivElement | null>(null)
   const reelRef = React.useRef<HTMLDivElement | null>(null)
   const resultRef = React.useRef<HTMLDivElement | null>(null)
@@ -148,18 +157,32 @@ export function PrayerRoulette({
   async function spin() {
     if (spinning || participants.length === 0) return
     setError(null)
-    const result = await spinRouletteAction(code)
-    if (!result.ok || !result.pick) {
-      setError(result.error ?? "Couldn't spin")
-      return
+    if (isAdmin) {
+      const result = await spinRouletteAction(code, adminToken)
+      if (!result.ok || !result.pick) {
+        setError(result.error ?? "Couldn't spin")
+        return
+      }
+      // Notify parent so SWR refetches; that will drive the animation via the
+      // "new pick arrived" effect above (same path used by remote clients).
+      onChange?.()
+    } else {
+      if (!myId) {
+        setError("Add yourself to the space before requesting a spin.")
+        return
+      }
+      const result = await requestSpinAction(code, "roulette", myId)
+      if (!result.ok) {
+        setError(result.error ?? "Couldn't request a spin")
+        return
+      }
+      onChange?.()
     }
-    // Notify parent so SWR refetches; that will drive the animation via the
-    // "new pick arrived" effect above (same path used by remote clients).
-    onChange?.()
   }
 
   async function resetWeights() {
-    await resetRouletteAction(code)
+    if (!isAdmin) return
+    await resetRouletteAction(code, adminToken)
     onChange?.()
   }
 
@@ -249,22 +272,35 @@ export function PrayerRoulette({
             <Button
               size="lg"
               onClick={spin}
-              disabled={spinning || participants.length === 0}
+              disabled={spinning || participants.length === 0 || !myId}
               className="bg-gradient-to-br from-indigo-600 via-violet-600 to-pink-600 text-white hover:from-indigo-500 hover:via-violet-500 hover:to-pink-500"
+              title={
+                isAdmin
+                  ? "Spin"
+                  : "Ask the admin to spin"
+              }
             >
               <Dices data-icon="inline-start" />
-              {spinning ? "Spinning…" : pick ? "Spin again" : "Spin"}
+              {spinning
+                ? "Spinning…"
+                : isAdmin
+                  ? pick
+                    ? "Spin again"
+                    : "Spin"
+                  : "Request spin"}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={resetWeights}
-              disabled={spinning || history.length === 0}
-              title="Reset everyone's odds back to equal"
-            >
-              <RotateCcw data-icon="inline-start" />
-              Reset odds
-            </Button>
+            {isAdmin ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetWeights}
+                disabled={spinning || history.length === 0}
+                title="Reset everyone's odds back to equal"
+              >
+                <RotateCcw data-icon="inline-start" />
+                Reset odds
+              </Button>
+            ) : null}
           </div>
 
           {participants.length > 0 ? (

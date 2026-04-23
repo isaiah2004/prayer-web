@@ -17,7 +17,11 @@ export async function GET(
     participants: space.participants,
     assignments: space.assignments,
     randomizedAt: space.randomizedAt,
+    prayerOrder: space.prayerOrder,
     roulette: space.roulette,
     verse: space.verse,
+    versePresenterId: space.versePresenterId,
+    spinRequests: space.spinRequests,
+    presenterRequests: space.presenterRequests,
   })
 }

@@ -89,6 +89,9 @@ type Props = {
   open: boolean
   code: string
   spaceVerse: VerseSelection | null
+  myId: string | null
+  adminToken: string | null
+  versePresenterId: string | null
   onClose: () => void
   onChange?: () => void
 }
@@ -103,9 +106,15 @@ export function VerseView({
   open,
   code,
   spaceVerse,
+  myId,
+  adminToken,
+  versePresenterId,
   onClose,
   onChange,
 }: Props) {
+  const isAdmin = !!adminToken
+  const isPresenter = !!myId && myId === versePresenterId
+  const canSet = isAdmin || isPresenter
   const [syncMode, setSyncMode] = React.useState<SyncMode>("follow")
   const [customLayout, setCustomLayout] = React.useState<ViewLayout | null>(null)
   const [localVerse, setLocalVerse] = React.useState<VerseSelection | null>(null)
@@ -183,6 +192,12 @@ export function VerseView({
 
   async function publishToSpace() {
     setError(null)
+    if (!canSet) {
+      setError(
+        "Only the admin or the current presenter can set the verse.",
+      )
+      return
+    }
     setPublishing(true)
     try {
       const result = await setVerseAction(code, {
@@ -190,6 +205,8 @@ export function VerseView({
         translationId,
         commentaryId,
         layout: customLayout ?? effectiveLayout,
+        adminToken,
+        callerId: myId,
       })
       if (!result.ok) {
         setError(result.error ?? "Failed to set verse")
@@ -391,7 +408,10 @@ export function VerseView({
                 variant="ghost"
                 size="xs"
                 onClick={async () => {
-                  await clearVerseAction(code)
+                  await clearVerseAction(code, {
+                    adminToken,
+                    callerId: myId,
+                  })
                   onChange?.()
                 }}
               >

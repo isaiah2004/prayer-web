@@ -54,14 +54,48 @@ export type VerseSelection = {
   updatedAt: number
 }
 
+export type PendingKind = "pair" | "roulette"
+
+export type SpinRequest = {
+  kind: PendingKind
+  firstRequestedAt: number
+  firstRequesterName: string
+  /** Unique requester IDs; added for auditing, UI shows count. */
+  requesterIds: string[]
+}
+
+export type PresenterRequest = {
+  participantId: string
+  /**
+   * When they first joined the queue. The queue is sorted ASC by this so
+   * the oldest request stays on top — admin's click target doesn't shift.
+   */
+  firstRequestedAt: number
+  latestRequestedAt: number
+}
+
 export type Space = {
   code: string
   createdAt: number
+  /**
+   * Random token generated on create. The creator's browser stores this
+   * in localStorage; it's required to run admin-only actions (randomize,
+   * roulette spin, approve/deny requests, grant/reclaim verse presenter).
+   */
+  adminToken: string
   participants: Participant[]
   assignments: Assignment[] | null
   randomizedAt: number | null
+  /** Shuffled participant IDs in speaking order (present only). */
+  prayerOrder: string[] | null
   roulette: RouletteState
   verse: VerseSelection | null
+  /** participantId of whoever currently has the "floor" for verse view. */
+  versePresenterId: string | null
+  /** At most one spin request per kind; oldest wins. */
+  spinRequests: SpinRequest[]
+  /** Queue of people asking for presenter access, oldest-first. */
+  presenterRequests: PresenterRequest[]
 }
 
-export type SpacePublic = Omit<Space, "createdAt">
+export type SpacePublic = Omit<Space, "createdAt" | "adminToken">

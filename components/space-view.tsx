@@ -27,11 +27,22 @@ import { RandomizeReveal } from "@/components/randomize-reveal"
 import { PrayerRoulette } from "@/components/prayer-roulette"
 import { VerseView } from "@/components/verse-view"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { AdminRequestsBanner } from "@/components/admin-requests-banner"
 import type { RoulettePick, SpacePublic } from "@/lib/types"
-import { randomizeAction, resetAction } from "@/app/actions"
+import {
+  randomizeAction,
+  resetAction,
+  requestSpinAction,
+  approveSpinRequestAction,
+  denySpinRequestAction,
+  grantVersePresenterAction,
+  reclaimVersePresenterAction,
+  denyPresenterRequestAction,
+} from "@/app/actions"
 
 const MY_ID_KEY = (code: string) => `prayer-web:my-id:${code}`
 const LAST_NAME_KEY = "prayer-web:last-name"
+const ADMIN_KEY = (code: string) => `prayer-web:admin-token:${code}`
 
 async function fetcher(url: string) {
   const res = await fetch(url, { cache: "no-store" })
@@ -52,11 +63,22 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
 
   const space = data ?? initial
   const [myId, setMyId] = React.useState<string | null>(null)
+  const [adminToken, setAdminToken] = React.useState<string | null>(null)
   const [revealOpen, setRevealOpen] = React.useState(false)
   const [rouletteOpen, setRouletteOpen] = React.useState(false)
   const [verseOpen, setVerseOpen] = React.useState(false)
   const [randomizing, setRandomizing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const isAdmin = !!adminToken
+
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem(ADMIN_KEY(space.code))
+      if (stored) setAdminToken(stored)
+    } catch {
+      /* ignore */
+    }
+  }, [space.code])
 
   // Broadcast sync: remember which events we've already surfaced, so the
   // next SWR tick can auto-open the matching modal for everyone in the room.
@@ -144,22 +166,67 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
 
   async function onRandomize() {
     setError(null)
+    if (!myId) {
+      setError("Add yourself to the space before triggering anything.")
+      return
+    }
     setRandomizing(true)
     try {
-      const result = await randomizeAction(space.code)
-      if (!result.ok) {
-        setError(result.error ?? "Couldn't generate pairs")
-        return
+      if (isAdmin) {
+        const result = await randomizeAction(space.code, adminToken)
+        if (!result.ok) {
+          setError(result.error ?? "Couldn't generate pairs")
+          return
+        }
+        await mutate()
+        setRevealOpen(true)
+      } else {
+        const result = await requestSpinAction(space.code, "pair", myId)
+        if (!result.ok) {
+          setError(result.error ?? "Couldn't request")
+          return
+        }
+        await mutate()
       }
-      await mutate()
-      setRevealOpen(true)
     } finally {
       setRandomizing(false)
     }
   }
 
   async function onReset() {
-    await resetAction(space.code)
+    if (!isAdmin) return
+    await resetAction(space.code, adminToken)
+    await mutate()
+  }
+
+  async function onApproveSpin(kind: "pair" | "roulette") {
+    if (!isAdmin) return
+    await approveSpinRequestAction(space.code, kind, adminToken)
+    await mutate()
+    if (kind === "pair") setRevealOpen(true)
+  }
+
+  async function onDenySpin(kind: "pair" | "roulette") {
+    if (!isAdmin) return
+    await denySpinRequestAction(space.code, kind, adminToken)
+    await mutate()
+  }
+
+  async function onGrantPresenter(participantId: string) {
+    if (!isAdmin) return
+    await grantVersePresenterAction(space.code, adminToken, participantId)
+    await mutate()
+  }
+
+  async function onReclaimPresenter() {
+    if (!isAdmin) return
+    await reclaimVersePresenterAction(space.code, adminToken)
+    await mutate()
+  }
+
+  async function onDenyPresenter(participantId: string) {
+    if (!isAdmin) return
+    await denyPresenterRequestAction(space.code, participantId, adminToken)
     await mutate()
   }
 
@@ -178,10 +245,31 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
             </Link>
           </Button>
           <div className="flex flex-1 items-center justify-end gap-2 sm:max-w-sm">
+            {isAdmin ? (
+              <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs font-medium">
+                admin
+              </span>
+            ) : null}
             <CopyCode code={space.code} className="flex-1" />
             <ThemeToggle />
           </div>
         </div>
+
+        {isAdmin && space.spinRequests.length > 0 ? (
+          <AdminRequestsBanner
+            spinRequests={space.spinRequests}
+            onApprove={onApproveSpin}
+            onDeny={onDenySpin}
+          />
+        ) : null}
+
+        {!isAdmin && space.spinRequests.length > 0 ? (
+          <div className="bg-muted text-muted-foreground rounded-xl border px-4 py-3 text-sm">
+            {space.spinRequests.length === 1
+              ? `A ${space.spinRequests[0].kind === "pair" ? "prayer-pair" : "roulette"} request is waiting for the admin to approve.`
+              : `${space.spinRequests.length} spin requests are waiting for the admin.`}
+          </div>
+        ) : null}
 
         <div className="grid gap-6 lg:grid-cols-5">
           <div className="flex flex-col gap-4 lg:col-span-3">
@@ -209,15 +297,17 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                         <Sparkles data-icon="inline-start" />
                         View pairs
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onReset}
-                        title="Clear current pairs"
-                      >
-                        <RefreshCcw data-icon="inline-start" />
-                        Reset
-                      </Button>
+                      {isAdmin ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={onReset}
+                          title="Clear current pairs"
+                        >
+                          <RefreshCcw data-icon="inline-start" />
+                          Reset
+                        </Button>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
@@ -358,6 +448,8 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
         history={space.roulette?.history ?? []}
         weights={space.roulette?.weights ?? {}}
         pendingPick={pendingPick}
+        myId={myId}
+        adminToken={adminToken}
         onPickShown={() => setPendingPick(null)}
         onClose={() => setRouletteOpen(false)}
         onChange={() => {
@@ -369,6 +461,9 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
         open={verseOpen}
         code={space.code}
         spaceVerse={space.verse ?? null}
+        myId={myId}
+        adminToken={adminToken}
+        versePresenterId={space.versePresenterId ?? null}
         onClose={() => setVerseOpen(false)}
         onChange={() => {
           void mutate()
