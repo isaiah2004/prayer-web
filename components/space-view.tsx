@@ -79,6 +79,13 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
   const [rouletteOpen, setRouletteOpen] = React.useState(false)
   const [verseOpen, setVerseOpen] = React.useState(false)
   const [callOpen, setCallOpen] = React.useState(false)
+  const [callUserMinimized, setCallUserMinimized] = React.useState(false)
+  // Auto-shrink the call into the floating mini while another view is
+  // open, so the user can still see verses / pairs / roulette while
+  // staying in the call (audio keeps flowing from the hidden tiles).
+  const callMinimized =
+    callOpen &&
+    (callUserMinimized || revealOpen || rouletteOpen || verseOpen)
   const [randomizing, setRandomizing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const isAdmin = !!adminToken
@@ -360,30 +367,6 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
             </Link>
           </Button>
           <div className="flex flex-1 items-center justify-end gap-2 sm:max-w-sm">
-            {isAdmin ? (
-              <button
-                type="button"
-                onClick={onToggleJoinMode}
-                className={cn(
-                  "rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
-                  space.joinMode === "request"
-                    ? "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                    : "border-border bg-muted text-muted-foreground",
-                )}
-                title={
-                  space.joinMode === "request"
-                    ? "Request mode: you approve new joiners. Click to switch to open."
-                    : "Open mode: anyone with the code can join. Click to switch to request mode."
-                }
-              >
-                {space.joinMode === "request" ? "Request mode" : "Open mode"}
-              </button>
-            ) : null}
-            {isAdmin ? (
-              <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs font-medium">
-                admin
-              </span>
-            ) : null}
             <CopyCode code={space.code} className="flex-1" />
             <ThemeToggle />
           </div>
@@ -441,7 +424,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
 
         <div className="grid gap-6 lg:grid-cols-5">
           <div className="flex flex-col gap-4 lg:col-span-3">
-            <Card>
+            <Card className="lg:flex lg:h-[60vh] lg:flex-col lg:overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between gap-3">
                 <div className="flex flex-col gap-1">
                   <CardTitle className="flex items-center gap-2">
@@ -461,6 +444,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                         variant="outline"
                         size="sm"
                         onClick={() => setRevealOpen(true)}
+                        className="backdrop-blur-sm backdrop-saturate-150"
                       >
                         <Sparkles data-icon="inline-start" />
                         View pairs
@@ -471,6 +455,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                           size="sm"
                           onClick={onReset}
                           title="Clear current pairs"
+                          className="backdrop-blur-sm"
                         >
                           <RefreshCcw data-icon="inline-start" />
                           Reset
@@ -480,7 +465,7 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
                   ) : null}
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="min-h-0 lg:flex-1 lg:overflow-y-auto">
                 <ParticipantsList
                   code={space.code}
                   participants={space.participants}
@@ -498,95 +483,97 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
               </CardContent>
             </Card>
 
-            <div className="flex flex-col items-center gap-3 py-2">
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <Button
-                  size="lg"
-                  onClick={onRandomize}
-                  disabled={!canRandomize || randomizing || !myId}
-                  className="group relative h-14 min-w-64 bg-gradient-to-br from-indigo-600 via-violet-600 to-pink-600 text-base font-semibold text-white hover:from-indigo-500 hover:via-violet-500 hover:to-pink-500 disabled:opacity-60"
-                  title={!myId ? "Add yourself first" : undefined}
-                >
-                  <Shuffle data-icon="inline-start" />
-                  {randomizing
-                    ? "Shuffling…"
-                    : isAdmin
-                      ? space.assignments
-                        ? "Regenerate prayer pairs"
-                        : "Generate prayer pairs"
-                      : "Request prayer pairs"}
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => setRouletteOpen(true)}
-                  disabled={!canRoulette || !myId}
-                  className="h-14 min-w-48 text-base"
-                  title={
-                    !myId
-                      ? "Add yourself first"
-                      : "Pick a random person to lead prayer"
-                  }
-                >
-                  <Dices data-icon="inline-start" />
-                  Prayer Roulette
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => setVerseOpen(true)}
-                  className="h-14 min-w-48 text-base"
-                  title="Open the shared verse view"
-                >
-                  <BookOpen data-icon="inline-start" />
-                  Verse View
-                  {space.verse ? (
-                    <span className="bg-primary/10 text-primary ml-2 rounded-full px-2 py-0.5 text-xs font-medium">
-                      {space.verse.reference}
-                    </span>
+            <Card>
+              <CardContent className="flex flex-col items-center gap-4 py-5 sm:py-6">
+                <div className="grid w-full grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  <Button
+                    size="lg"
+                    onClick={onRandomize}
+                    disabled={!canRandomize || randomizing || !myId}
+                    className="h-12 w-full bg-gradient-to-br from-indigo-600 via-violet-600 to-pink-600 px-4 text-sm font-semibold text-white shadow-md shadow-indigo-500/25 hover:from-indigo-500 hover:via-violet-500 hover:to-pink-500 disabled:opacity-60"
+                    title={!myId ? "Add yourself first" : undefined}
+                  >
+                    <Shuffle data-icon="inline-start" />
+                    {randomizing
+                      ? "Shuffling…"
+                      : isAdmin
+                        ? space.assignments
+                          ? "Regenerate prayer pairs"
+                          : "Generate prayer pairs"
+                        : "Request prayer pairs"}
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setRouletteOpen(true)}
+                    disabled={!canRoulette || !myId}
+                    className="h-12 w-full border-amber-500/40 bg-amber-500/15 px-4 text-sm font-medium text-amber-900 shadow-sm shadow-amber-500/10 backdrop-blur-sm backdrop-saturate-150 hover:bg-amber-500/25 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/20"
+                    title={
+                      !myId
+                        ? "Add yourself first"
+                        : "Pick a random person to lead prayer"
+                    }
+                  >
+                    <Dices data-icon="inline-start" />
+                    Prayer Roulette
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setVerseOpen(true)}
+                    className="h-12 w-full border-sky-500/40 bg-sky-500/15 px-4 text-sm font-medium text-sky-900 shadow-sm shadow-sky-500/10 backdrop-blur-sm backdrop-saturate-150 hover:bg-sky-500/25 dark:border-sky-400/30 dark:bg-sky-500/10 dark:text-sky-200 dark:hover:bg-sky-500/20"
+                    title="Open the shared verse view"
+                  >
+                    <BookOpen data-icon="inline-start" />
+                    Verse View
+                  </Button>
+                  {space.callRoomUrl ? (
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      onClick={onJoinCall}
+                      disabled={!myId}
+                      className="h-12 w-full border-emerald-500/40 bg-emerald-500/15 px-4 text-sm font-medium text-emerald-900 shadow-sm shadow-emerald-500/10 backdrop-blur-sm backdrop-saturate-150 hover:bg-emerald-500/25 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20"
+                      title="Join the live video call"
+                    >
+                      <Video data-icon="inline-start" />
+                      Join call
+                      <span className="ml-1 inline-block size-2 animate-pulse rounded-full bg-emerald-500" />
+                    </Button>
+                  ) : isAdmin ? (
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      onClick={onStartCall}
+                      disabled={!myId}
+                      className="h-12 w-full border-emerald-500/40 bg-emerald-500/15 px-4 text-sm font-medium text-emerald-900 shadow-sm shadow-emerald-500/10 backdrop-blur-sm backdrop-saturate-150 hover:bg-emerald-500/25 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20"
+                      title="Start a video call for the group"
+                    >
+                      <PhoneCall data-icon="inline-start" />
+                      Start call
+                    </Button>
                   ) : null}
-                </Button>
-                {space.callRoomUrl ? (
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={onJoinCall}
-                    disabled={!myId}
-                    className="h-14 min-w-48 border-emerald-500/40 bg-emerald-500/10 text-emerald-600 text-base hover:bg-emerald-500/20 dark:text-emerald-400"
-                    title="Join the live video call"
-                  >
-                    <Video data-icon="inline-start" />
-                    Join call
-                    <span className="bg-emerald-500 ml-1 inline-block size-2 animate-pulse rounded-full" />
-                  </Button>
-                ) : isAdmin ? (
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={onStartCall}
-                    disabled={!myId}
-                    className="h-14 min-w-48 text-base"
-                    title="Start a video call for the group"
-                  >
-                    <PhoneCall data-icon="inline-start" />
-                    Start call
-                  </Button>
+                </div>
+                <p className="text-muted-foreground text-center text-xs">
+                  {canRandomize
+                    ? "Generate prayer pairs to cover everyone, spin the roulette to pick a leader, or open Verse View to share scripture."
+                    : "Add people to enable pair generation. Roulette needs 1+. Verse View works anytime."}
+                </p>
+                {error ? (
+                  <p className="text-destructive text-sm">{error}</p>
                 ) : null}
-              </div>
-              <p className="text-muted-foreground text-center text-xs">
-                {canRandomize
-                  ? "Generate prayer pairs to cover everyone, spin the roulette to pick a leader, or open Verse View to share scripture."
-                  : "Add people to enable pair generation. Roulette needs 1+. Verse View works anytime."}
-              </p>
-              {error ? (
-                <p className="text-destructive text-sm">{error}</p>
-              ) : null}
-            </div>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="flex flex-col gap-4 lg:col-span-2">
             {myId ? (
               <Card>
+                <StatusPills
+                  isAdmin={isAdmin}
+                  joinMode={space.joinMode}
+                  onToggleJoinMode={onToggleJoinMode}
+                />
                 <CardHeader>
                   <CardTitle>You&apos;re in the circle</CardTitle>
                   <CardDescription>
@@ -597,6 +584,11 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
               </Card>
             ) : myJoinId ? (
               <Card>
+                <StatusPills
+                  isAdmin={isAdmin}
+                  joinMode={space.joinMode}
+                  onToggleJoinMode={onToggleJoinMode}
+                />
                 <CardHeader>
                   <CardTitle>Waiting for the admin…</CardTitle>
                   <CardDescription>
@@ -607,6 +599,11 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
               </Card>
             ) : (
               <Card>
+                <StatusPills
+                  isAdmin={isAdmin}
+                  joinMode={space.joinMode}
+                  onToggleJoinMode={onToggleJoinMode}
+                />
                 <CardHeader>
                   <CardTitle>Add yourself</CardTitle>
                   <CardDescription>
@@ -702,8 +699,61 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
         roomUrl={space.callRoomUrl ?? null}
         myId={myId}
         adminToken={adminToken}
-        onClose={() => setCallOpen(false)}
+        minimized={callMinimized}
+        hasAssignments={!!space.assignments}
+        onClose={() => {
+          setCallOpen(false)
+          setCallUserMinimized(false)
+        }}
+        onMinimize={() => setCallUserMinimized(true)}
+        onMaximize={() => {
+          setCallUserMinimized(false)
+          setRevealOpen(false)
+          setRouletteOpen(false)
+          setVerseOpen(false)
+        }}
+        onOpenView={(view) => {
+          if (view === "verse") setVerseOpen(true)
+          else if (view === "roulette") setRouletteOpen(true)
+          else if (view === "pairs") setRevealOpen(true)
+        }}
       />
     </main>
+  )
+}
+
+function StatusPills({
+  isAdmin,
+  joinMode,
+  onToggleJoinMode,
+}: {
+  isAdmin: boolean
+  joinMode: SpacePublic["joinMode"]
+  onToggleJoinMode: () => void
+}) {
+  if (!isAdmin) return null
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-6">
+      <span className="bg-primary/15 text-primary inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase">
+        Admin
+      </span>
+      <button
+        type="button"
+        onClick={onToggleJoinMode}
+        className={cn(
+          "inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors backdrop-blur-sm",
+          joinMode === "request"
+            ? "border-amber-500/40 bg-amber-500/15 text-amber-800 hover:bg-amber-500/25 dark:text-amber-200"
+            : "border-border bg-muted/60 text-muted-foreground hover:bg-muted",
+        )}
+        title={
+          joinMode === "request"
+            ? "Request mode: you approve new joiners. Click to switch to open."
+            : "Open mode: anyone with the code can join. Click to switch to request mode."
+        }
+      >
+        {joinMode === "request" ? "Request mode" : "Open mode"}
+      </button>
+    </div>
   )
 }

@@ -8,14 +8,18 @@ import DailyIframe, {
   type DailyParticipant,
 } from "@daily-co/daily-js"
 import {
+  BookOpen,
+  Dices,
+  Maximize2,
   Mic,
   MicOff,
+  Minimize2,
   PhoneOff,
   Settings,
+  Sparkles,
   Video,
   VideoOff,
   Volume2,
-  X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -28,7 +32,12 @@ type Props = {
   roomUrl: string | null
   myId: string | null
   adminToken: string | null
+  minimized?: boolean
+  hasAssignments?: boolean
   onClose: () => void
+  onMinimize?: () => void
+  onMaximize?: () => void
+  onOpenView?: (view: "verse" | "roulette" | "pairs") => void
 }
 
 type PMap = Record<string, DailyParticipant>
@@ -39,7 +48,12 @@ export function VideoCall({
   roomUrl,
   myId,
   adminToken,
+  minimized = false,
+  hasAssignments = false,
   onClose,
+  onMinimize,
+  onMaximize,
+  onOpenView,
 }: Props) {
   const callRef = React.useRef<DailyCall | null>(null)
   const [participants, setParticipants] = React.useState<PMap>({})
@@ -306,6 +320,100 @@ export function VideoCall({
 
   if (!open) return null
 
+  if (minimized) {
+    // Primary tile: first remote participant, falling back to local (or
+    // nothing if we're still joining). Other participants are kept in the
+    // DOM so their <audio> elements still play — they're just hidden.
+    const primary =
+      entries.find((p) => !p.local) ?? entries[0] ?? null
+    return (
+      <div
+        className="fixed right-3 bottom-3 z-50 flex w-[min(13rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl bg-black/95 text-white shadow-2xl ring-1 ring-white/15 backdrop-blur-sm sm:right-4 sm:bottom-4 sm:w-72"
+        role="dialog"
+        aria-label="Call in progress"
+      >
+        <div className="relative aspect-video bg-neutral-900">
+          {entries.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-xs">
+              {status === "joining" ? "Joining…" : "Call"}
+            </div>
+          ) : (
+            entries.map((p) => (
+              <div
+                key={p.session_id}
+                className={cn(
+                  "absolute inset-0",
+                  p.session_id === primary?.session_id
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0",
+                )}
+              >
+                <ParticipantTile
+                  participant={p}
+                  speakerId={selected.speakerId ?? null}
+                />
+              </div>
+            ))
+          )}
+          {entries.length > 1 ? (
+            <span className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm">
+              {entries.length} in call
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={onMaximize}
+            className="absolute top-2 right-2 inline-flex size-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+            aria-label="Expand call"
+            title="Expand"
+          >
+            <Maximize2 className="size-4" />
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-1 border-t border-white/10 px-2 py-1.5">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={toggleMic}
+              aria-label={micOn ? "Mute microphone" : "Unmute microphone"}
+              title={micOn ? "Mute" : "Unmute"}
+              className={cn(
+                "text-white hover:bg-white/10",
+                !micOn && "text-red-400 hover:text-red-300",
+              )}
+            >
+              {micOn ? <Mic /> : <MicOff />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={toggleCam}
+              aria-label={camOn ? "Turn camera off" : "Turn camera on"}
+              title={camOn ? "Camera off" : "Camera on"}
+              className={cn(
+                "text-white hover:bg-white/10",
+                !camOn && "text-red-400 hover:text-red-300",
+              )}
+            >
+              {camOn ? <Video /> : <VideoOff />}
+            </Button>
+          </div>
+          <Button
+            variant="destructive"
+            size="icon-sm"
+            onClick={leave}
+            aria-label="Leave call"
+            title="Leave"
+            className="rounded-full"
+          >
+            <PhoneOff />
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-black/90 backdrop-blur-sm"
@@ -313,8 +421,8 @@ export function VideoCall({
       aria-modal="true"
       aria-label="Video call"
     >
-      <div className="flex items-center justify-between border-b border-white/10 px-5 py-3 text-white">
-        <div className="text-sm font-medium">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-white sm:px-5 sm:py-3">
+        <div className="min-w-0 truncate text-sm font-medium">
           {status === "joining"
             ? "Joining…"
             : status === "joined"
@@ -323,18 +431,57 @@ export function VideoCall({
                 ? "Leaving…"
                 : "Video call"}
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={leave}
-          aria-label="Close"
-          className="text-white hover:bg-white/10"
-        >
-          <X />
-        </Button>
+        <div className="flex items-center gap-1">
+          {onOpenView ? (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenView("verse")}
+                className="text-white/90 hover:bg-white/10 hover:text-white"
+                title="Open verse view"
+              >
+                <BookOpen data-icon="inline-start" />
+                <span className="hidden sm:inline">Verse</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenView("roulette")}
+                className="text-white/90 hover:bg-white/10 hover:text-white"
+                title="Open prayer roulette"
+              >
+                <Dices data-icon="inline-start" />
+                <span className="hidden sm:inline">Roulette</span>
+              </Button>
+              {hasAssignments ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onOpenView("pairs")}
+                  className="text-white/90 hover:bg-white/10 hover:text-white"
+                  title="Open prayer pairs"
+                >
+                  <Sparkles data-icon="inline-start" />
+                  <span className="hidden sm:inline">Pairs</span>
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onMinimize}
+            aria-label="Minimize call"
+            title="Minimize"
+            className="text-white hover:bg-white/10"
+          >
+            <Minimize2 />
+          </Button>
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-4">
+      <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-4">
         {error ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-white">
             <p className="text-destructive text-sm">{error}</p>
@@ -350,7 +497,7 @@ export function VideoCall({
         )}
       </div>
 
-      <div className="flex items-center justify-center gap-3 border-t border-white/10 px-5 py-3">
+      <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 px-3 py-3 sm:gap-3 sm:px-5">
         <Button
           variant="outline"
           size="icon-lg"

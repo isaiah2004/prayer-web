@@ -855,20 +855,25 @@ function RangeStep({
         </Panel>
       </div>
 
-      <div className="flex items-center justify-between gap-2 pt-2">
-        <Button variant="ghost" size="sm" onClick={onCancel}>
+      <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCancel}
+          className="self-start"
+        >
           Back to books
         </Button>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1 sm:gap-2">
           <Button variant="ghost" size="sm" onClick={() => setEditing("start")}>
             Edit start
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setEditing("end")}>
             Edit end
           </Button>
-          <Button size="sm" onClick={confirm}>
+          <Button size="sm" onClick={confirm} className="ml-auto sm:ml-0">
             <Check data-icon="inline-start" />
-            Use {buildReference()}
+            Use selection
           </Button>
         </div>
       </div>

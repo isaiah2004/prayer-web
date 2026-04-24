@@ -7,17 +7,16 @@ import {
   Separator as PanelResizeHandle,
 } from "react-resizable-panels"
 import {
+  Book,
   BookOpen,
   ChevronDown,
   Columns2,
   Columns3,
   EyeOff,
-  LayoutDashboard,
   Megaphone,
   Plus,
   Rows2,
   Search,
-  Sparkles,
   Square,
   Trash2,
   Users,
@@ -31,6 +30,13 @@ import type { PanelKind, VerseSelection, ViewLayout } from "@/lib/types"
 import { VersePanel } from "@/components/verse-panel"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { VersePicker } from "@/components/verse-picker"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   FEATURED_COMMENTARIES,
   FEATURED_TRANSLATIONS,
@@ -186,10 +192,15 @@ export function VerseView({
   }, [spaceVerse?.reference])
 
   const effectiveLayout: ViewLayout = React.useMemo(() => {
-    if (syncMode === "follow" && spaceVerse) return spaceVerse.layout
+    if (syncMode === "follow") {
+      // Broadcasters (admin/presenter) author locally, so their custom
+      // layout wins; viewers just follow the pilot.
+      if (canSet && customLayout) return customLayout
+      if (spaceVerse) return spaceVerse.layout
+    }
     if (customLayout) return customLayout
     return layoutWithCurrentTranslation(LAYOUT_PRESETS[2], translationId)
-  }, [syncMode, spaceVerse, customLayout, translationId])
+  }, [syncMode, canSet, spaceVerse, customLayout, translationId])
 
   const effectiveVerse: VerseSelection | null = React.useMemo(() => {
     if (syncMode === "free") return localVerse
@@ -310,26 +321,39 @@ export function VerseView({
 
   return (
     <div
-      className="bg-background fixed inset-0 z-40 flex flex-col"
+      className="fixed inset-0 z-40 flex flex-col bg-white/65 backdrop-blur-2xl backdrop-saturate-150 dark:bg-black/65"
       role="dialog"
       aria-modal="true"
       aria-label="Verse view"
     >
-      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-        <div className="flex items-center gap-2">
-          <BookOpen className="text-primary size-4" />
-          <span className="text-sm font-medium">Verse View</span>
+      <div className="border-b">
+        <div className="flex items-center justify-between gap-2 px-3 pt-2 sm:px-4">
+          <div className="flex items-center gap-2">
+            <BookOpen className="text-primary size-4" />
+            <span className="text-sm font-medium">Verse View</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Close verse view"
+            >
+              <X />
+            </Button>
+          </div>
         </div>
 
         <form
-          className="flex min-w-0 flex-1 items-center gap-2"
+          className="flex flex-wrap items-center gap-2 px-3 py-2 sm:px-4"
           onSubmit={(e) => {
             e.preventDefault()
             if (syncMode === "free") void setLocallyFree()
             else void publishToSpace()
           }}
         >
-          <div className="relative flex-1 min-w-[180px] max-w-md">
+          <div className="relative min-w-0 flex-1 basis-full sm:basis-auto sm:min-w-[220px] sm:max-w-md">
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2" />
             <Input
               value={referenceInput}
@@ -348,54 +372,65 @@ export function VerseView({
               title="Open verse picker"
               className="absolute top-1/2 right-0.5 -translate-y-1/2"
             >
-              <Sparkles />
+              <Book />
             </Button>
           </div>
-          <SelectInline
-            value={translationId}
-            onChange={setTranslationId}
-            options={FEATURED_TRANSLATIONS.filter(
-              (t) => t.language === "eng",
-            ).map((t) => ({
-              value: t.id,
-              label: t.shortName,
-            }))}
-            ariaLabel="Translation"
-          />
-          <SelectInline
-            value={commentaryId}
-            onChange={setCommentaryId}
-            options={FEATURED_COMMENTARIES.map((c) => ({
-              value: c.id,
-              label: c.name,
-            }))}
-            ariaLabel="Commentary"
-          />
+          <Select value={translationId} onValueChange={setTranslationId}>
+            <SelectTrigger aria-label="Translation">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FEATURED_TRANSLATIONS.filter((t) => t.language === "eng").map(
+                (t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.shortName}
+                  </SelectItem>
+                ),
+              )}
+            </SelectContent>
+          </Select>
+          <Select value={commentaryId} onValueChange={setCommentaryId}>
+            <SelectTrigger aria-label="Commentary">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FEATURED_COMMENTARIES.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {syncMode === "free" ? (
-            <Button type="submit" size="sm" variant="secondary">
+            <Button
+              type="submit"
+              size="sm"
+              variant="secondary"
+              className="ml-auto sm:ml-0"
+            >
               Set locally
             </Button>
           ) : canSet ? (
-            <Button type="submit" size="sm" disabled={publishing}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={publishing}
+              className="ml-auto sm:ml-0"
+            >
               <Megaphone data-icon="inline-start" />
-              {publishing ? "Setting…" : "Set for everyone"}
+              <span className="hidden sm:inline">
+                {publishing ? "Setting…" : "Set for everyone"}
+              </span>
+              <span className="sm:hidden">
+                {publishing ? "Setting…" : "Set"}
+              </span>
             </Button>
           ) : (
-            <AskForFloor code={code} myId={myId} onChange={onChange} />
+            <div className="ml-auto sm:ml-0">
+              <AskForFloor code={code} myId={myId} onChange={onChange} />
+            </div>
           )}
         </form>
-
-        <div className="flex items-center gap-1">
-          <ThemeToggle />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            aria-label="Close verse view"
-          >
-            <X />
-          </Button>
-        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -403,9 +438,19 @@ export function VerseView({
         <SyncButton
           active={syncMode === "follow"}
           onClick={() => setSyncMode("follow")}
-          icon={<Users className="size-3.5" />}
-          label="Follow pilot"
-          hint="Shared verse + layout"
+          icon={
+            canSet ? (
+              <Megaphone className="size-3.5" />
+            ) : (
+              <Users className="size-3.5" />
+            )
+          }
+          label={canSet ? "Broadcast" : "Follow pilot"}
+          hint={
+            canSet
+              ? "Publish my verse + layout to everyone"
+              : "Shared verse + layout"
+          }
         />
         <SyncButton
           active={syncMode === "free"}
@@ -422,7 +467,7 @@ export function VerseView({
             size="xs"
             variant={effectiveLayout.id === p.id ? "secondary" : "ghost"}
             onClick={() => applyPreset(p)}
-            disabled={syncMode === "follow"}
+            disabled={syncMode === "follow" && !canSet}
             title={p.name}
           >
             {p.id === "solo" && <Square />}
@@ -473,11 +518,11 @@ export function VerseView({
         <LayoutRenderer
           layout={effectiveLayout}
           verse={effectiveVerse}
-          editable={syncMode !== "follow"}
+          editable={syncMode !== "follow" || canSet}
           onRemovePanel={removePanel}
           onChangePanel={changePanel}
         />
-        {syncMode !== "follow" ? (
+        {syncMode !== "follow" || canSet ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="text-muted-foreground text-xs">Add panel:</span>
             <Button
@@ -570,6 +615,18 @@ function AskForFloor({
   )
 }
 
+function useIsDesktop(query = "(min-width: 640px)") {
+  const [isDesktop, setIsDesktop] = React.useState(false)
+  React.useEffect(() => {
+    const mq = window.matchMedia(query)
+    setIsDesktop(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [query])
+  return isDesktop
+}
+
 function LayoutRenderer({
   layout,
   verse,
@@ -584,7 +641,44 @@ function LayoutRenderer({
   onChangePanel: (idx: number, panel: PanelKind) => void
 }) {
   const n = layout.panels.length
+  const isDesktop = useIsDesktop()
   if (n === 0) return null
+
+  if (!isDesktop) {
+    // On phones, side-by-side resizable panels are unreadable. Stack them
+    // vertically as scroll-siblings instead.
+    return (
+      <div className="flex h-full w-full flex-col gap-2 overflow-y-auto">
+        {layout.panels.map((panel, idx) => (
+          <div
+            key={idx}
+            className="relative min-h-[55vh] shrink-0 overflow-hidden"
+          >
+            {editable ? (
+              <div className="absolute top-1 right-1 z-10 flex items-center gap-1">
+                <PanelKindSelect
+                  panel={panel}
+                  onChange={(p) => onChangePanel(idx, p)}
+                />
+                {n > 1 ? (
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    onClick={() => onRemovePanel(idx)}
+                    aria-label="Remove panel"
+                  >
+                    <Trash2 />
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+            <VersePanel kind={panel} verse={verse} className="h-full" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <PanelGroup
       orientation="horizontal"
@@ -718,35 +812,3 @@ function SyncButton({
   )
 }
 
-function SelectInline({
-  value,
-  onChange,
-  options,
-  ariaLabel,
-}: {
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-  ariaLabel: string
-}) {
-  return (
-    <div className="relative">
-      <select
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "bg-background border-input h-9 appearance-none rounded-md border pr-7 pl-3 text-sm font-medium",
-          "focus-visible:border-ring focus-visible:ring-ring/30 focus-visible:ring-[3px] focus-visible:outline-none",
-        )}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 size-4 -translate-y-1/2" />
-    </div>
-  )
-}
