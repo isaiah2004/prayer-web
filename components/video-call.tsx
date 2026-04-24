@@ -7,7 +7,16 @@ import DailyIframe, {
   type DailyEventObjectParticipantLeft,
   type DailyParticipant,
 } from "@daily-co/daily-js"
-import { Mic, MicOff, PhoneOff, Video, VideoOff, X } from "lucide-react"
+import {
+  Mic,
+  MicOff,
+  PhoneOff,
+  Settings,
+  Video,
+  VideoOff,
+  Volume2,
+  X,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -41,7 +50,47 @@ export function VideoCall({
   const [micOn, setMicOn] = React.useState(true)
   const [camOn, setCamOn] = React.useState(true)
 
+  const [devices, setDevices] = React.useState<{
+    cameras: MediaDeviceInfo[]
+    mics: MediaDeviceInfo[]
+    speakers: MediaDeviceInfo[]
+  }>({ cameras: [], mics: [], speakers: [] })
+  const [selected, setSelected] = React.useState<{
+    cameraId?: string
+    micId?: string
+    speakerId?: string
+  }>({})
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
+
   const isAdmin = !!adminToken
+
+  async function refreshDevices() {
+    const call = callRef.current
+    if (!call) return
+    try {
+      const list = await call.enumerateDevices()
+      const all = (list.devices ?? []) as MediaDeviceInfo[]
+      setDevices({
+        cameras: all.filter((d) => d.kind === "videoinput" && d.deviceId),
+        mics: all.filter((d) => d.kind === "audioinput" && d.deviceId),
+        speakers: all.filter((d) => d.kind === "audiooutput" && d.deviceId),
+      })
+      const current = await call.getInputDevices()
+      setSelected((prev) => ({
+        ...prev,
+        cameraId:
+          (current.camera && "deviceId" in current.camera
+            ? current.camera.deviceId
+            : undefined) ?? prev.cameraId,
+        micId:
+          (current.mic && "deviceId" in current.mic
+            ? current.mic.deviceId
+            : undefined) ?? prev.micId,
+      }))
+    } catch {
+      /* ignore */
+    }
+  }
 
   React.useEffect(() => {
     if (!open) return
@@ -75,6 +124,13 @@ export function VideoCall({
         call.on("joined-meeting", () => {
           setStatus("joined")
           syncParticipants()
+          void refreshDevices()
+        })
+        call.on("available-devices-updated", () => {
+          void refreshDevices()
+        })
+        call.on("selected-devices-updated", () => {
+          void refreshDevices()
         })
         call.on(
           "participant-joined",
@@ -131,22 +187,28 @@ export function VideoCall({
 
   async function leave() {
     const call = callRef.current
-    if (!call) {
-      onClose()
-      return
-    }
-    setStatus("leaving")
-    try {
-      await call.leave()
-    } catch {
-      /* ignore */
-    }
-    try {
-      await call.destroy()
-    } catch {
-      /* ignore */
-    }
     callRef.current = null
+    setStatus("leaving")
+    // Best-effort cleanup with a hard timeout. If we never fully joined
+    // (e.g. getUserMedia never resolved), call.leave()/destroy() can hang
+    // forever — don't let that pin the UI.
+    if (call) {
+      void Promise.race([
+        (async () => {
+          try {
+            await call.leave()
+          } catch {
+            /* ignore */
+          }
+          try {
+            await call.destroy()
+          } catch {
+            /* ignore */
+          }
+        })(),
+        new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+      ])
+    }
     onClose()
   }
 
@@ -166,10 +228,45 @@ export function VideoCall({
     setCamOn(next)
   }
 
+  async function selectCamera(deviceId: string) {
+    const call = callRef.current
+    if (!call) return
+    try {
+      await call.setInputDevicesAsync({ videoDeviceId: deviceId })
+      setSelected((s) => ({ ...s, cameraId: deviceId }))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't switch camera")
+    }
+  }
+
+  async function selectMic(deviceId: string) {
+    const call = callRef.current
+    if (!call) return
+    try {
+      await call.setInputDevicesAsync({ audioDeviceId: deviceId })
+      setSelected((s) => ({ ...s, micId: deviceId }))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't switch microphone")
+    }
+  }
+
+  async function selectSpeaker(deviceId: string) {
+    const call = callRef.current
+    if (!call) return
+    try {
+      await call.setOutputDeviceAsync({ outputDeviceId: deviceId })
+      setSelected((s) => ({ ...s, speakerId: deviceId }))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't switch speaker")
+    }
+  }
+
   async function adminEndForAll() {
     if (!isAdmin) return
-    await leave()
+    // End the server-side room first so clients can't stay connected and
+    // so the UI exits immediately even if the local Daily cleanup hangs.
     await endCallAction(code, adminToken)
+    await leave()
   }
 
   const entries = Object.values(participants)
@@ -213,7 +310,10 @@ export function VideoCall({
             </Button>
           </div>
         ) : (
-          <VideoGrid participants={entries} />
+          <VideoGrid
+            participants={entries}
+            speakerId={selected.speakerId ?? null}
+          />
         )}
       </div>
 
@@ -244,6 +344,15 @@ export function VideoCall({
         >
           {camOn ? <Video /> : <VideoOff />}
         </Button>
+        <DeviceSettings
+          open={settingsOpen}
+          setOpen={setSettingsOpen}
+          devices={devices}
+          selected={selected}
+          onSelectCamera={selectCamera}
+          onSelectMic={selectMic}
+          onSelectSpeaker={selectSpeaker}
+        />
         <Button
           variant="destructive"
           size="icon-lg"
@@ -270,7 +379,13 @@ export function VideoCall({
   )
 }
 
-function VideoGrid({ participants }: { participants: DailyParticipant[] }) {
+function VideoGrid({
+  participants,
+  speakerId,
+}: {
+  participants: DailyParticipant[]
+  speakerId: string | null
+}) {
   const count = participants.length
   const cols =
     count <= 1 ? 1 : count <= 4 ? 2 : count <= 9 ? 3 : 4
@@ -283,16 +398,180 @@ function VideoGrid({ participants }: { participants: DailyParticipant[] }) {
       }}
     >
       {participants.map((p) => (
-        <ParticipantTile key={p.session_id} participant={p} />
+        <ParticipantTile
+          key={p.session_id}
+          participant={p}
+          speakerId={speakerId}
+        />
       ))}
+    </div>
+  )
+}
+
+function DeviceSettings({
+  open,
+  setOpen,
+  devices,
+  selected,
+  onSelectCamera,
+  onSelectMic,
+  onSelectSpeaker,
+}: {
+  open: boolean
+  setOpen: (v: boolean) => void
+  devices: {
+    cameras: MediaDeviceInfo[]
+    mics: MediaDeviceInfo[]
+    speakers: MediaDeviceInfo[]
+  }
+  selected: {
+    cameraId?: string
+    micId?: string
+    speakerId?: string
+  }
+  onSelectCamera: (id: string) => void | Promise<void>
+  onSelectMic: (id: string) => void | Promise<void>
+  onSelectSpeaker: (id: string) => void | Promise<void>
+}) {
+  const ref = React.useRef<HTMLDivElement | null>(null)
+  React.useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onDown)
+    document.addEventListener("keydown", onEsc)
+    return () => {
+      document.removeEventListener("mousedown", onDown)
+      document.removeEventListener("keydown", onEsc)
+    }
+  }, [open, setOpen])
+
+  const speakerSupported =
+    typeof HTMLMediaElement !== "undefined" &&
+    "setSinkId" in HTMLMediaElement.prototype
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="outline"
+        size="icon-lg"
+        onClick={() => setOpen(!open)}
+        aria-label="Device settings"
+        title="Mic / camera / speaker"
+        className={cn(
+          "rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20",
+        )}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+      >
+        <Settings />
+      </Button>
+      {open ? (
+        <div
+          role="dialog"
+          aria-label="Device settings"
+          className="bg-card absolute bottom-full right-0 z-20 mb-2 flex w-80 flex-col gap-3 rounded-xl border p-4 shadow-xl"
+        >
+          <DeviceSelect
+            icon={<Video className="size-4" />}
+            label="Camera"
+            items={devices.cameras}
+            value={selected.cameraId}
+            onChange={onSelectCamera}
+          />
+          <DeviceSelect
+            icon={<Mic className="size-4" />}
+            label="Microphone"
+            items={devices.mics}
+            value={selected.micId}
+            onChange={onSelectMic}
+          />
+          {devices.speakers.length > 0 ? (
+            <DeviceSelect
+              icon={<Volume2 className="size-4" />}
+              label="Speaker"
+              items={devices.speakers}
+              value={selected.speakerId}
+              onChange={onSelectSpeaker}
+              disabled={!speakerSupported}
+              disabledHint={
+                !speakerSupported
+                  ? "Your browser doesn't allow switching output devices."
+                  : undefined
+              }
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function DeviceSelect({
+  icon,
+  label,
+  items,
+  value,
+  onChange,
+  disabled,
+  disabledHint,
+}: {
+  icon: React.ReactNode
+  label: string
+  items: MediaDeviceInfo[]
+  value?: string
+  onChange: (id: string) => void | Promise<void>
+  disabled?: boolean
+  disabledHint?: string
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="text-muted-foreground flex items-center gap-2 text-xs font-medium tracking-wide uppercase">
+        {icon}
+        {label}
+      </div>
+      <select
+        value={value ?? ""}
+        onChange={(e) => {
+          if (!disabled) void onChange(e.target.value)
+        }}
+        disabled={disabled}
+        className={cn(
+          "bg-background border-input h-9 appearance-none rounded-md border px-3 text-sm font-medium",
+          "focus-visible:border-ring focus-visible:ring-ring/30 focus-visible:ring-[3px] focus-visible:outline-none",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+        )}
+      >
+        {items.length === 0 ? (
+          <option value="">No devices found</option>
+        ) : (
+          <>
+            {!value ? <option value="">Default</option> : null}
+            {items.map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>
+                {d.label || `${label} (${d.deviceId.slice(0, 6)})`}
+              </option>
+            ))}
+          </>
+        )}
+      </select>
+      {disabledHint ? (
+        <p className="text-muted-foreground text-xs">{disabledHint}</p>
+      ) : null}
     </div>
   )
 }
 
 function ParticipantTile({
   participant,
+  speakerId,
 }: {
   participant: DailyParticipant
+  speakerId: string | null
 }) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const audioRef = React.useRef<HTMLAudioElement | null>(null)
@@ -323,6 +602,18 @@ function ParticipantTile({
       audio.srcObject = null
     }
   }, [participant.audioTrack, participant.local])
+
+  // Route remote audio to the selected speaker, where supported.
+  React.useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || participant.local) return
+    const anyAudio = audio as HTMLAudioElement & {
+      setSinkId?: (id: string) => Promise<void>
+    }
+    if (speakerId && typeof anyAudio.setSinkId === "function") {
+      anyAudio.setSinkId(speakerId).catch(() => {})
+    }
+  }, [speakerId, participant.local])
 
   const videoOff = !participant.video
   const micOff = !participant.audio
