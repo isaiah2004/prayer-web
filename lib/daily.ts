@@ -57,16 +57,7 @@ export async function ensureRoom(code: string): Promise<{
     body: JSON.stringify({
       name,
       privacy: "private",
-      properties: {
-        exp,
-        enable_knocking: false,
-        enable_prejoin_ui: false,
-        enable_screenshare: true,
-        enable_chat: false,
-        start_video_off: false,
-        start_audio_off: false,
-        max_participants: 12,
-      },
+      properties: { exp },
     }),
   })
   if (!createRes.ok) {
@@ -103,7 +94,6 @@ export async function mintMeetingToken(args: {
         user_id: args.participantId,
         user_name: args.participantName,
         is_owner: args.isOwner,
-        enable_screenshare: true,
         exp,
       },
     }),
