@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import GlassSurface from "@/components/GlassSurface"
 import {
   BOOKS,
   booksInTestament,
@@ -95,6 +96,59 @@ export function VersePicker({ open, onClose, onSelect, initialBook }: Props) {
 
   if (!open) return null
 
+  const body = (
+    <>
+      <PickerHeader
+        step={step}
+        mode={mode}
+        testament={testament}
+        onMode={setMode}
+        onBack={() => {
+          if (step.kind === "range") setStep({ kind: "pick-book" })
+          else if (testament) setTestament(null)
+        }}
+        onClose={onClose}
+      />
+
+      <AutoHeight>
+        <div
+          key={stepKey(step, mode, testament, view)}
+          className="animate-in fade-in-0 slide-in-from-top-1 duration-200 ease-out"
+        >
+          <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+            {step.kind === "pick-book" ? (
+              mode === "search" ? (
+                <SearchMode
+                  query={query}
+                  setQuery={setQuery}
+                  onSelectBook={(book) => setStep({ kind: "range", book })}
+                />
+              ) : testament ? (
+                <BookGrid
+                  testament={testament}
+                  view={view}
+                  setView={setView}
+                  onSelectBook={(book) => setStep({ kind: "range", book })}
+                />
+              ) : (
+                <TestamentStep onPick={setTestament} />
+              )
+            ) : (
+              <RangeStep
+                book={step.book}
+                onSelect={(selection) => {
+                  onSelect(selection)
+                  onClose()
+                }}
+                onCancel={() => setStep({ kind: "pick-book" })}
+              />
+            )}
+          </div>
+        </div>
+      </AutoHeight>
+    </>
+  )
+
   return (
     <div
       role="dialog"
@@ -105,56 +159,71 @@ export function VersePicker({ open, onClose, onSelect, initialBook }: Props) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className={cn(
-          "relative flex w-[min(100%,48rem)] flex-col overflow-hidden rounded-2xl border shadow-2xl",
-          "bg-card/80 supports-[backdrop-filter]:bg-card/60",
-          "dark:bg-card/70 dark:supports-[backdrop-filter]:bg-card/40",
-          "border-border/60",
-          "backdrop-blur-2xl backdrop-saturate-150",
-        )}
+        className="relative w-[min(100%,48rem)]"
       >
-        <PickerHeader
-          step={step}
-          mode={mode}
-          testament={testament}
-          onMode={setMode}
-          onBack={() => {
-            if (step.kind === "range") setStep({ kind: "pick-book" })
-            else if (testament) setTestament(null)
-          }}
-          onClose={onClose}
-        />
-
-        <div className="min-h-0 max-h-[70vh] flex-1 overflow-y-auto px-5 py-4">
-          {step.kind === "pick-book" ? (
-            mode === "search" ? (
-              <SearchMode
-                query={query}
-                setQuery={setQuery}
-                onSelectBook={(book) => setStep({ kind: "range", book })}
-              />
-            ) : testament ? (
-              <BookGrid
-                testament={testament}
-                view={view}
-                setView={setView}
-                onSelectBook={(book) => setStep({ kind: "range", book })}
-              />
-            ) : (
-              <TestamentStep onPick={setTestament} />
-            )
-          ) : (
-            <RangeStep
-              book={step.book}
-              onSelect={(selection) => {
-                onSelect(selection)
-                onClose()
-              }}
-              onCancel={() => setStep({ kind: "pick-book" })}
-            />
-          )}
-        </div>
+        <GlassSurface
+          width="100%"
+          height="100%"
+          borderRadius={16}
+          backgroundOpacity={0.6}
+          saturation={1.4}
+          blur={11}
+          borderWidth={0.08}
+          brightness={65}
+          opacity={0.92}
+          displace={0.3}
+          distortionScale={-140}
+          className="glass-surface--pane shadow-2xl"
+          style={{ minHeight: "auto" }}
+        >
+          <div className="flex w-full flex-col">{body}</div>
+        </GlassSurface>
       </div>
+    </div>
+  )
+}
+
+function stepKey(
+  step: Step,
+  mode: Mode,
+  testament: Testament | null,
+  view: GridView,
+): string {
+  if (step.kind === "range") return `range:${step.book.usfm}`
+  if (mode === "search") return "search"
+  if (testament) return `books:${testament}:${view}`
+  return "testament"
+}
+
+/**
+ * Smoothly animates the height of its child as the content changes.
+ * Uses ResizeObserver to measure, and CSS transition on height.
+ */
+function AutoHeight({ children }: { children: React.ReactNode }) {
+  const innerRef = React.useRef<HTMLDivElement | null>(null)
+  const [height, setHeight] = React.useState<number | "auto">("auto")
+
+  React.useEffect(() => {
+    const el = innerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      setHeight(el.offsetHeight)
+    })
+    ro.observe(el)
+    setHeight(el.offsetHeight)
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <div
+      style={{
+        height,
+        transition: "height 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+        overflow: "hidden",
+        willChange: "height",
+      }}
+    >
+      <div ref={innerRef}>{children}</div>
     </div>
   )
 }
