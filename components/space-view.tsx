@@ -3,6 +3,7 @@
 import * as React from "react"
 import useSWR from "swr"
 import Link from "next/link"
+import { toast } from "sonner"
 import {
   ArrowLeft,
   BookOpen,
@@ -165,6 +166,25 @@ export function SpaceView({ initial }: { initial: SpacePublic }) {
       setPendingPick(latestSpin)
     }
   }, [latestSpin])
+
+  // Notify everyone when the admin ends the call (URL flips to null).
+  const prevCallRoomUrlRef = React.useRef<string | null>(
+    initial.callRoomUrl ?? null,
+  )
+  React.useEffect(() => {
+    const prev = prevCallRoomUrlRef.current
+    const current = space.callRoomUrl ?? null
+    if (prev && !current) {
+      toast("The prayer call has ended", {
+        description: "The admin closed the room for everyone.",
+      })
+    } else if (!prev && current) {
+      toast("Prayer call started", {
+        description: "Tap Join call to hop in.",
+      })
+    }
+    prevCallRoomUrlRef.current = current
+  }, [space.callRoomUrl])
 
   React.useEffect(() => {
     try {
