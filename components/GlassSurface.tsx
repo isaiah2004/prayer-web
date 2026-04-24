@@ -146,27 +146,22 @@ const GlassSurface: React.FC<GlassSurfaceProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // Debounce: during animated size changes the container fires a resize
+    // every frame. Regenerating the SVG displacement data-URL (and
+    // setAttribute-ing it back in) on every frame is extremely expensive
+    // (~17fps on modest hardware). Run the regeneration only after the
+    // resize settles — the feImage preserves the old map via
+    // preserveAspectRatio="none" stretching in the meantime.
+    let debounceId: ReturnType<typeof setTimeout> | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      setTimeout(updateDisplacementMap, 0);
+      if (debounceId) clearTimeout(debounceId);
+      debounceId = setTimeout(updateDisplacementMap, 120);
     });
 
     resizeObserver.observe(containerRef.current);
 
     return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const resizeObserver = new ResizeObserver(() => {
-      setTimeout(updateDisplacementMap, 0);
-    });
-
-    resizeObserver.observe(containerRef.current);
-
-    return () => {
+      if (debounceId) clearTimeout(debounceId);
       resizeObserver.disconnect();
     };
   }, []);

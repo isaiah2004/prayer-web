@@ -154,7 +154,7 @@ export function VersePicker({ open, onClose, onSelect, initialBook }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="Pick a Bible verse"
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 p-4 pt-[min(12vh,8rem)] backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/25 p-4 pt-[min(12vh,8rem)]"
       onClick={onClose}
     >
       <div
@@ -165,16 +165,15 @@ export function VersePicker({ open, onClose, onSelect, initialBook }: Props) {
           width="100%"
           height="100%"
           borderRadius={16}
-          backgroundOpacity={0.6}
-          saturation={1.4}
-          blur={11}
-          borderWidth={0.08}
-          brightness={65}
-          opacity={0.92}
-          displace={0.3}
-          distortionScale={-140}
+          backgroundOpacity={0.55}
+          saturation={1.5}
+          blur={14}
+          borderWidth={0.06}
+          brightness={60}
+          opacity={0.9}
+          displace={0.4}
+          distortionScale={-120}
           className="glass-surface--pane shadow-2xl"
-          style={{ minHeight: "auto" }}
         >
           <div className="flex w-full flex-col">{body}</div>
         </GlassSurface>
@@ -197,30 +196,44 @@ function stepKey(
 
 /**
  * Smoothly animates the height of its child as the content changes.
- * Uses ResizeObserver to measure, and CSS transition on height.
+ *
+ * The first measurement is applied WITHOUT a transition, so the dialog
+ * doesn't "pop" from 0 → N on first open. Subsequent size changes animate.
  */
 function AutoHeight({ children }: { children: React.ReactNode }) {
   const innerRef = React.useRef<HTMLDivElement | null>(null)
-  const [height, setHeight] = React.useState<number | "auto">("auto")
+  const [height, setHeight] = React.useState<number | null>(null)
+  const [enableTransition, setEnableTransition] = React.useState(false)
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const el = innerRef.current
     if (!el) return
-    const ro = new ResizeObserver(() => {
-      setHeight(el.offsetHeight)
+    // Initial measurement (no transition).
+    setHeight(el.offsetHeight)
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.round(entry.contentRect.height)
+        setHeight(h)
+      }
     })
     ro.observe(el)
-    setHeight(el.offsetHeight)
-    return () => ro.disconnect()
+    // Enable transition after the first paint so the first size doesn't animate from 0.
+    const id = requestAnimationFrame(() => setEnableTransition(true))
+    return () => {
+      cancelAnimationFrame(id)
+      ro.disconnect()
+    }
   }, [])
 
   return (
     <div
       style={{
-        height,
-        transition: "height 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+        height: height ?? "auto",
+        transition: enableTransition
+          ? "height 220ms cubic-bezier(0.22, 1, 0.36, 1)"
+          : "none",
         overflow: "hidden",
-        willChange: "height",
+        willChange: enableTransition ? "height" : undefined,
       }}
     >
       <div ref={innerRef}>{children}</div>
