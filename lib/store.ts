@@ -1,5 +1,5 @@
 import { customAlphabet } from "nanoid"
-import { get, put, del } from "@vercel/blob"
+import { neon } from "@neondatabase/serverless"
 import type {
   JoinMode,
   JoinRequest,
@@ -37,10 +37,44 @@ function isAdmin(space: Space, token: string | null | undefined): boolean {
   return !!token && token === space.adminToken
 }
 
-const USE_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN
+const USE_DB = !!process.env.DATABASE_URL
 
-function blobPath(code: string): string {
-  return `spaces/${code}.json`
+type NeonSql = ReturnType<typeof neon>
+const globalForSql = globalThis as unknown as {
+  __prayerSql?: NeonSql
+  __prayerSchemaReady?: Promise<void>
+}
+
+function getSql(): NeonSql {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is not configured")
+  }
+  if (!globalForSql.__prayerSql) {
+    globalForSql.__prayerSql = neon(process.env.DATABASE_URL)
+  }
+  return globalForSql.__prayerSql
+}
+
+async function ensureSchema(): Promise<void> {
+  if (!USE_DB) return
+  if (!globalForSql.__prayerSchemaReady) {
+    const sql = getSql()
+    globalForSql.__prayerSchemaReady = (async () => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS spaces (
+          code TEXT PRIMARY KEY,
+          data JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `
+      await sql`
+        CREATE INDEX IF NOT EXISTS spaces_created_at_idx
+          ON spaces (created_at)
+      `
+    })()
+  }
+  await globalForSql.__prayerSchemaReady
 }
 
 function migrateSpace(space: Space): Space {
@@ -67,40 +101,43 @@ function migrateSpace(space: Space): Space {
   return space
 }
 
-async function readSpaceFromBlob(code: string): Promise<Space | null> {
-  try {
-    const result = await get(blobPath(code), {
-      access: "private",
-      useCache: false,
-    })
-    if (!result || result.statusCode !== 200) return null
-    const text = await new Response(result.stream).text()
-    if (!text) return null
-    const space = migrateSpace(JSON.parse(text) as Space)
-    if (Date.now() - space.createdAt > SPACE_TTL_MS) {
-      try {
-        await del(blobPath(code))
-      } catch {
-        /* ignore */
-      }
-      return null
-    }
-    return space
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    if (/not.found|404/i.test(message)) return null
-    throw err
-  }
+async function readSpaceFromDb(code: string): Promise<Space | null> {
+  await ensureSchema()
+  const sql = getSql()
+  const rows = (await sql`
+    SELECT data
+      FROM spaces
+     WHERE code = ${code}
+       AND created_at > now() - INTERVAL '24 hours'
+     LIMIT 1
+  `) as Array<{ data: Space }>
+  if (rows.length === 0) return null
+  return migrateSpace(rows[0].data)
 }
 
-async function writeSpaceToBlob(space: Space): Promise<void> {
-  await put(blobPath(space.code), JSON.stringify(space), {
-    access: "private",
-    contentType: "application/json",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 0,
-  })
+async function writeSpaceToDb(space: Space): Promise<void> {
+  await ensureSchema()
+  const sql = getSql()
+  await sql`
+    INSERT INTO spaces (code, data, created_at, updated_at)
+    VALUES (
+      ${space.code},
+      ${JSON.stringify(space)}::jsonb,
+      to_timestamp(${space.createdAt / 1000}),
+      now()
+    )
+    ON CONFLICT (code) DO UPDATE
+      SET data = EXCLUDED.data,
+          updated_at = now()
+  `
+  // Periodic cleanup — 1% chance per write to sweep expired rows.
+  if (Math.random() < 0.01) {
+    try {
+      await sql`DELETE FROM spaces WHERE created_at < now() - INTERVAL '24 hours'`
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function gcMem() {
@@ -112,14 +149,14 @@ function gcMem() {
 
 async function loadSpace(code: string): Promise<Space | null> {
   const upper = code.toUpperCase()
-  if (USE_BLOB) return readSpaceFromBlob(upper)
+  if (USE_DB) return readSpaceFromDb(upper)
   gcMem()
   return memSpaces.get(upper) ?? null
 }
 
 async function persistSpace(space: Space): Promise<void> {
-  if (USE_BLOB) {
-    await writeSpaceToBlob(space)
+  if (USE_DB) {
+    await writeSpaceToDb(space)
   } else {
     memSpaces.set(space.code, space)
   }

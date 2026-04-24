@@ -42,7 +42,7 @@ import {
   requestPresenterAction,
 } from "@/app/actions"
 
-export type SyncMode = "follow" | "custom-layout" | "free"
+export type SyncMode = "follow" | "free"
 
 const LAYOUT_PRESETS: ViewLayout[] = [
   {
@@ -135,8 +135,7 @@ export function VerseView({
     if (!open) return
     try {
       const m = localStorage.getItem(SYNC_KEY(code))
-      if (m === "follow" || m === "custom-layout" || m === "free")
-        setSyncMode(m)
+      if (m === "follow" || m === "free") setSyncMode(m)
       const ls = localStorage.getItem(LAYOUT_KEY(code))
       if (ls) setCustomLayout(JSON.parse(ls))
       const lv = localStorage.getItem(LOCAL_VERSE_KEY(code))
@@ -406,21 +405,14 @@ export function VerseView({
           onClick={() => setSyncMode("follow")}
           icon={<Users className="size-3.5" />}
           label="Follow pilot"
-          hint="Pilot's verse + pilot's layout"
-        />
-        <SyncButton
-          active={syncMode === "custom-layout"}
-          onClick={() => setSyncMode("custom-layout")}
-          icon={<LayoutDashboard className="size-3.5" />}
-          label="My layout"
-          hint="Pilot's verse, my layout"
+          hint="Shared verse + layout"
         />
         <SyncButton
           active={syncMode === "free"}
           onClick={() => setSyncMode("free")}
           icon={<EyeOff className="size-3.5" />}
           label="Free explore"
-          hint="My verse, my layout"
+          hint="My own verse, my own layout"
         />
         <div className="bg-border mx-2 h-5 w-px" />
         <div className="text-muted-foreground mr-1 text-xs">Layout:</div>

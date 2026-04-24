@@ -52,7 +52,7 @@ export function CopyCode({
   return (
     <div
       className={cn(
-        "bg-card flex items-center gap-3 rounded-xl border px-4 py-3 shadow-sm",
+        "pw-surface flex items-center gap-3 rounded-xl px-4 py-3 shadow-sm",
         className,
       )}
     >

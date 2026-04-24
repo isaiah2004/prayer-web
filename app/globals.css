@@ -122,7 +122,7 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
     }
   html {
     @apply font-sans;
@@ -159,75 +159,96 @@
   50% { background-position: 100% 50%; }
 }
 
-/* When a GlassSurface is used as a dialog container we want its content to
- * fill top-to-bottom without the default centering/padding. */
-.glass-surface--pane > .glass-surface__content {
-  padding: 0;
-  align-items: stretch;
-  justify-content: flex-start;
+/* Noise overlay. Uses ::before so it paints behind content without
+ * needing stacking-context gymnastics. Border-radius: inherit keeps the
+ * noise clipped to the element's rounded corners (no overflow-hidden
+ * required — so dropdowns/popovers inside still work). */
+.pw-noise {
+  position: relative;
+  isolation: isolate;
 }
-
-/* Layer a real blur() on top of the SVG-displacement backdrop-filter so the
- * content behind the glass pane is actually frosted — the reactbits
- * component only does displacement + saturate by default, which leaves the
- * page perfectly legible through the glass. Also add a subtle noise
- * overlay for a more tactile "frosted" feel. */
-.glass-surface--pane.glass-surface--svg {
-  backdrop-filter: var(--filter-id, url(#glass-filter))
-    saturate(var(--glass-saturation, 1)) blur(16px);
-  -webkit-backdrop-filter: var(--filter-id, url(#glass-filter))
-    saturate(var(--glass-saturation, 1)) blur(16px);
-}
-.glass-surface--pane.glass-surface--fallback {
-  backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-}
-.glass-surface--pane::after {
+.pw-noise::before {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: -1;
   pointer-events: none;
   border-radius: inherit;
-  opacity: 0.35;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-  background-size: 140px 140px;
-  z-index: 0;
+  opacity: 0.15;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 200px 200px;
 }
-.dark .glass-surface--pane::after {
-  opacity: 0.2;
-  mix-blend-mode: soft-light;
+.dark .pw-noise::before {
+  opacity: 0.15;
 }
 
-/* CSS-only glass pane used by the verse picker. Smooth through height
- * animations (no SVG regeneration) and kept legible via background
- * opacity tuned per theme. */
-.pw-glass-pane {
-  background: color-mix(in oklch, var(--card) 70%, transparent);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  box-shadow:
-    0 1px 0 0 color-mix(in oklch, white 60%, transparent) inset,
-    0 -1px 0 0 color-mix(in oklch, black 8%, transparent) inset,
-    0 20px 60px -10px rgba(0, 0, 0, 0.25),
-    0 8px 24px -6px rgba(0, 0, 0, 0.15);
-  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
+/* Main acrylic surface used for cards / panels / banners. Transparent
+ * enough that the iridescent background shows through while remaining
+ * legible. */
+.pw-surface {
+  position: relative;
+  isolation: isolate;
+  background-color: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(4px) saturate(150%);
+  -webkit-backdrop-filter: blur(4px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
 }
-.dark .pw-glass-pane {
-  background: color-mix(in oklch, var(--card) 55%, transparent);
-  backdrop-filter: blur(22px) saturate(180%);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  box-shadow:
-    0 1px 0 0 color-mix(in oklch, white 12%, transparent) inset,
-    0 -1px 0 0 color-mix(in oklch, black 20%, transparent) inset,
-    0 24px 80px -10px rgba(0, 0, 0, 0.6),
-    0 10px 30px -6px rgba(0, 0, 0, 0.4);
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+.dark .pw-surface {
+  background-color: rgba(20, 20, 28, 0.55);
+  backdrop-filter: blur(6px) saturate(150%);
+  -webkit-backdrop-filter: blur(6px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.pw-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.12;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 200px 200px;
+}
+.dark .pw-surface::before {
+  opacity: 0.1;
 }
 @supports not (backdrop-filter: blur(10px)) {
-  .pw-glass-pane {
-    background: var(--card);
+  .pw-surface {
+    background-color: var(--card);
   }
+}
+
+/* Subtle translucent inner surface used for things like participant
+ * rows / verse panels that sit inside a pw-surface. */
+.pw-surface-inner {
+  position: relative;
+  background-color: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.dark .pw-surface-inner {
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Tiles inside the acrylic pane: transparent backing so the pane's frost
+ * shows through. Subtle border + hover lift. */
+.pw-acrylic-tile {
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pw-acrylic-tile:hover {
+  background: color-mix(in oklch, var(--primary) 18%, rgba(255, 255, 255, 0.25));
+  border-color: color-mix(in oklch, var(--primary) 60%, transparent);
+}
+.dark .pw-acrylic-tile {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.dark .pw-acrylic-tile:hover {
+  background: color-mix(in oklch, var(--primary) 25%, rgba(255, 255, 255, 0.08));
+  border-color: color-mix(in oklch, var(--primary) 70%, transparent);
 }
 .animated-gradient {
   background-size: 200% 200%;

@@ -118,7 +118,7 @@ function ParticipantRow({
   return (
     <li
       className={cn(
-        "bg-card rounded-xl border p-4 shadow-sm transition-colors",
+        "pw-surface rounded-xl p-4 shadow-sm transition-colors",
         isMe && "ring-primary/30 ring-2",
         absent && "opacity-75",
       )}

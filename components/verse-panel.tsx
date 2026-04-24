@@ -301,7 +301,7 @@ function PanelShell({
   return (
     <div
       className={cn(
-        "bg-card flex h-full flex-col overflow-hidden rounded-xl border shadow-sm",
+        "pw-surface flex h-full flex-col overflow-hidden rounded-xl shadow-sm",
         className,
       )}
     >

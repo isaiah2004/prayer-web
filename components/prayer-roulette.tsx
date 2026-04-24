@@ -205,7 +205,7 @@ export function PrayerRoulette({
       aria-modal="true"
       aria-label="Prayer roulette"
     >
-      <div className="bg-card relative flex max-h-[92vh] w-[min(100%-2rem,36rem)] flex-col overflow-hidden rounded-2xl border shadow-2xl">
+      <div className="pw-surface pw-noise relative flex max-h-[92vh] w-[min(100%-2rem,36rem)] flex-col overflow-hidden rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between border-b px-5 py-3">
           <div className="flex items-center gap-2">
             <Dices className="text-primary size-4" />

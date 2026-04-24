@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import GlassSurface from "@/components/GlassSurface"
 import {
   BOOKS,
   booksInTestament,
@@ -154,29 +153,19 @@ export function VersePicker({ open, onClose, onSelect, initialBook }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="Pick a Bible verse"
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/25 p-4 pt-[min(12vh,8rem)]"
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/30 p-4 pt-[min(12vh,8rem)]"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-[min(100%,48rem)]"
+        className={cn(
+          "pw-noise relative w-[min(100%,48rem)] overflow-hidden rounded-2xl shadow-2xl",
+          "border border-white/30 dark:border-white/10",
+          "bg-white/40 dark:bg-black/40",
+          "backdrop-blur-sm backdrop-saturate-150",
+        )}
       >
-        <GlassSurface
-          width="100%"
-          height="100%"
-          borderRadius={16}
-          backgroundOpacity={0.55}
-          saturation={1.5}
-          blur={14}
-          borderWidth={0.06}
-          brightness={60}
-          opacity={0.9}
-          displace={0.4}
-          distortionScale={-120}
-          className="glass-surface--pane shadow-2xl"
-        >
-          <div className="flex w-full flex-col">{body}</div>
-        </GlassSurface>
+        <div className="relative z-10 flex flex-col">{body}</div>
       </div>
     </div>
   )
@@ -382,7 +371,7 @@ function TestamentCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "group bg-card hover:border-primary/50 hover:bg-primary/5 flex flex-col gap-2 rounded-xl border p-4 text-left transition-all",
+        "pw-acrylic-tile group flex flex-col gap-2 rounded-xl p-4 text-left",
         "focus-visible:border-ring focus-visible:ring-ring/30 focus-visible:ring-[3px] focus-visible:outline-none",
       )}
     >
@@ -543,7 +532,7 @@ function AlphabetGrid({
           <div
             key={letter}
             className={cn(
-              "bg-card/40 flex min-h-[84px] flex-col gap-1 rounded-lg border p-2",
+              "pw-acrylic-tile flex min-h-[84px] flex-col gap-1 rounded-lg p-2",
               !hasAny && "opacity-40",
               dim && "opacity-50",
             )}
@@ -588,7 +577,7 @@ function BookButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "hover:border-primary/50 hover:bg-primary/5 flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+        "pw-acrylic-tile flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm",
         "focus-visible:border-ring focus-visible:ring-ring/30 focus-visible:ring-[3px] focus-visible:outline-none",
       )}
     >
@@ -804,7 +793,7 @@ function RangeStep({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="bg-background/60 flex items-center gap-2 rounded-xl border p-2">
+      <div className="pw-acrylic-tile flex items-center gap-2 rounded-xl p-2">
         <EndpointChip
           label="Start"
           chapter={startChapter}
@@ -932,7 +921,7 @@ function Panel({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-card/40 flex min-h-0 flex-col gap-2 rounded-xl border p-3">
+    <div className="pw-acrylic-tile flex min-h-0 flex-col gap-2 rounded-xl p-3">
       <div className="flex items-baseline gap-2">
         <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           {title}

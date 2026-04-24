@@ -156,7 +156,7 @@ export function RandomizeReveal({
       aria-modal="true"
       aria-label="Prayer assignments"
     >
-      <div className="bg-card relative flex h-[92vh] w-[min(100%-2rem,48rem)] flex-col overflow-hidden rounded-2xl border shadow-2xl">
+      <div className="pw-surface pw-noise relative flex h-[92vh] w-[min(100%-2rem,48rem)] flex-col overflow-hidden rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between border-b px-5 py-3">
           <div className="flex items-center gap-2">
             <Sparkles className="text-primary size-4" />
@@ -290,7 +290,7 @@ function AssignmentCard({
         "rounded-xl border p-4 shadow-sm",
         isMine
           ? "border-primary/50 bg-primary/5 ring-primary/30 ring-2"
-          : "bg-card",
+          : "pw-surface-inner",
       )}
     >
       <div className="flex items-center gap-2 text-sm">

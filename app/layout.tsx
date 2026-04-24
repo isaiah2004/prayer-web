@@ -1,8 +1,9 @@
-import { Geist, Geist_Mono, Inter } from "next/font/google"
+import { Geist_Mono, Inter } from "next/font/google"
 import { Toaster } from "sonner"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AppBackground } from "@/components/app-background"
 import { cn } from "@/lib/utils";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'})
@@ -25,6 +26,7 @@ export default function RootLayout({
     >
       <body>
         <ThemeProvider>
+          <AppBackground />
           {children}
           <Toaster
             position="bottom-center"
