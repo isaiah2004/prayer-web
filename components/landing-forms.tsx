@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useFormStatus } from "react-dom"
 import { useRouter } from "next/navigation"
-import { ArrowRight, Plus, Users } from "lucide-react"
+import { ArrowRight, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -109,13 +109,17 @@ function JoinSubmit() {
 export function LandingHero() {
   return (
     <div className="flex flex-col items-center gap-4 text-center">
-      <div className="bg-primary/10 text-primary inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium">
-        <Users className="size-3.5" />
-        Pray for one another
-      </div>
       <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-        Prayer Request Randomizer
+        Koinonia
       </h1>
+      <figure className="flex max-w-xl flex-col items-center gap-1">
+        <blockquote className="text-foreground/90 text-balance text-base italic sm:text-lg">
+          &ldquo;For where two or three gather together in My name, there am I with them.&rdquo;
+        </blockquote>
+        <figcaption className="text-muted-foreground text-xs">
+          Matthew 18:20 (BSB)
+        </figcaption>
+      </figure>
       <p className="text-muted-foreground max-w-xl text-balance">
         Create a space, share the code with friends, add your prayer requests,
         and let the randomizer pair each person with someone to pray for.
