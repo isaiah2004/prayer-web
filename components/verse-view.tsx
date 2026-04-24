@@ -17,6 +17,7 @@ import {
   Plus,
   Rows2,
   Search,
+  Sparkles,
   Square,
   Trash2,
   Users,
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils"
 import type { PanelKind, VerseSelection, ViewLayout } from "@/lib/types"
 import { VersePanel } from "@/components/verse-panel"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { VersePicker } from "@/components/verse-picker"
 import {
   FEATURED_COMMENTARIES,
   FEATURED_TRANSLATIONS,
@@ -127,6 +129,7 @@ export function VerseView({
   const [referenceInput, setReferenceInput] = React.useState("")
   const [publishing, setPublishing] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = React.useState(false)
 
   React.useEffect(() => {
     if (!open) return
@@ -194,7 +197,7 @@ export function VerseView({
     return spaceVerse
   }, [syncMode, spaceVerse, localVerse])
 
-  async function publishToSpace() {
+  async function publishReference(reference: string) {
     setError(null)
     if (!canSet) {
       setError(
@@ -205,7 +208,7 @@ export function VerseView({
     setPublishing(true)
     try {
       const result = await setVerseAction(code, {
-        reference: referenceInput,
+        reference,
         translationId,
         commentaryId,
         layout: customLayout ?? effectiveLayout,
@@ -220,6 +223,31 @@ export function VerseView({
     } finally {
       setPublishing(false)
     }
+  }
+
+  async function publishToSpace() {
+    await publishReference(referenceInput)
+  }
+
+  function setLocallyFreeWithReference(reference: string) {
+    setError(null)
+    const parsed = parseReference(reference)
+    if (!parsed) {
+      setError('Could not parse reference. Try "John 3:16" or "Psalm 23".')
+      return
+    }
+    const layout = customLayout ?? effectiveLayout
+    setLocalVerse({
+      reference: parsed.canonical,
+      book: parsed.book.usfm,
+      chapter: parsed.chapter,
+      verseStart: parsed.verseStart,
+      verseEnd: parsed.verseEnd,
+      translationId,
+      commentaryId,
+      layout,
+      updatedAt: Date.now(),
+    })
   }
 
   async function setLocallyFree() {
@@ -308,10 +336,21 @@ export function VerseView({
               value={referenceInput}
               onChange={(e) => setReferenceInput(e.target.value)}
               placeholder='e.g. "John 3:16" or "Psalm 23:1-6"'
-              className="pl-8"
+              className="pl-8 pr-9"
               autoComplete="off"
               spellCheck={false}
             />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setPickerOpen(true)}
+              aria-label="Open verse picker"
+              title="Open verse picker"
+              className="absolute top-1/2 right-0.5 -translate-y-1/2"
+            >
+              <Sparkles />
+            </Button>
           </div>
           <SelectInline
             value={translationId}
@@ -478,6 +517,20 @@ export function VerseView({
           </div>
         ) : null}
       </div>
+
+      <VersePicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(sel) => {
+          setReferenceInput(sel.reference)
+          setPickerOpen(false)
+          if (syncMode === "free") {
+            setLocallyFreeWithReference(sel.reference)
+          } else if (canSet) {
+            void publishReference(sel.reference)
+          }
+        }}
+      />
     </div>
   )
 }

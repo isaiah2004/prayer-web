@@ -5,6 +5,24 @@ export type BookEntry = {
   chapters: number
 }
 
+export type Testament = "old" | "new"
+
+// Chapters 39 long; Malachi is the 39th book in the canonical array.
+const OT_USFM = new Set([
+  "GEN", "EXO", "LEV", "NUM", "DEU", "JOS", "JDG", "RUT", "1SA", "2SA",
+  "1KI", "2KI", "1CH", "2CH", "EZR", "NEH", "EST", "JOB", "PSA", "PRO",
+  "ECC", "SNG", "ISA", "JER", "LAM", "EZK", "DAN", "HOS", "JOL", "AMO",
+  "OBA", "JON", "MIC", "NAM", "HAB", "ZEP", "HAG", "ZEC", "MAL",
+])
+
+export function testamentOf(usfm: string): Testament {
+  return OT_USFM.has(usfm) ? "old" : "new"
+}
+
+export function booksInTestament(testament: Testament): BookEntry[] {
+  return BOOKS.filter((b) => testamentOf(b.usfm) === testament)
+}
+
 export const BOOKS: BookEntry[] = [
   // Old Testament
   { usfm: "GEN", name: "Genesis", aliases: ["gen", "ge", "gn"], chapters: 50 },
