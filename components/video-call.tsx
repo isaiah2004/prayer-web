@@ -92,10 +92,32 @@ export function VideoCall({
     }
   }
 
+  // If the call was ended (server cleared callRoomUrl) while the overlay is
+  // open, close it cleanly instead of showing a stale error.
+  const hadRoomRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!open) {
+      hadRoomRef.current = false
+      return
+    }
+    if (roomUrl) {
+      hadRoomRef.current = true
+    } else if (hadRoomRef.current) {
+      // We were in a call, and the room just went away — auto-close.
+      void leave()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, roomUrl])
+
   React.useEffect(() => {
     if (!open) return
-    if (!roomUrl || !myId) {
+    if (!myId) {
       setError("You need to be in the space to join the call.")
+      return
+    }
+    if (!roomUrl) {
+      // No active call — if the overlay got opened without one, just close.
+      onClose()
       return
     }
     let cancelled = false
@@ -154,7 +176,18 @@ export function VideoCall({
           setStatus("idle")
         })
         call.on("error", (ev) => {
-          setError(ev?.errorMsg ?? "Call error")
+          const msg = ev?.errorMsg ?? ""
+          // When the admin ends the room, Daily fires an 'error' with
+          // "Meeting has ended" — treat that as a graceful close.
+          if (
+            /meeting\s*(has)?\s*ended/i.test(msg) ||
+            /meeting[-\s]ended/i.test((ev as { error?: { type?: string } })?.error?.type ?? "") ||
+            /meeting you.?re trying to join does not exist/i.test(msg)
+          ) {
+            void leave()
+            return
+          }
+          setError(msg || "Call error")
           setStatus("error")
         })
 
